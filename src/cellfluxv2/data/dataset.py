@@ -73,12 +73,27 @@ class CellFluxDataset(Dataset):
         self.std = std.detach().to(torch.float32)
         self.stage = int(stage)
         self.rng_seed = int(rng_seed)
+        self.epoch = 0
+
+    def set_epoch(self, epoch: int) -> None:
+        """Set the epoch counter used in per-item seeding.
+
+        Per-item RNG seeds are ``(rng_seed, epoch, idx)``, so the same
+        seed + same epoch + same idx is reproducible, while a different
+        epoch resamples stage-1 noise and (when the pool has > 1 option)
+        the stage-2 control row and the per-well latent row.
+        """
+        if not isinstance(epoch, int) or isinstance(epoch, bool):
+            raise ValueError(f"epoch must be an int; got {type(epoch).__name__}")
+        if epoch < 0:
+            raise ValueError(f"epoch must be >= 0; got {epoch}")
+        self.epoch = int(epoch)
 
     def __len__(self) -> int:
         return len(self.split.treated)
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
-        rng = np.random.default_rng((self.rng_seed, int(idx)))
+        rng = np.random.default_rng((self.rng_seed, self.epoch, int(idx)))
 
         treated_row = self.split.treated.iloc[idx]
         experiment = str(treated_row["experiment_name"])

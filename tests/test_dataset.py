@@ -340,3 +340,106 @@ def test_dataset_dataloader_batch_shapes(tmp_path: Path):
     assert batch["x0"].shape == (4, 169, 8)
     assert batch["x1"].shape == (4, 169, 8)
     assert batch["condition"].shape == (4, 1024)
+
+
+# ---------- epoch-wise resampling -------------------------------------------
+
+def test_dataset_set_epoch_default_zero(tmp_path: Path):
+    ds = _build_dataset(tmp_path, stage=1)
+    assert ds.epoch == 0
+
+
+def test_dataset_set_epoch_negative_raises(tmp_path: Path):
+    ds = _build_dataset(tmp_path, stage=1)
+    with pytest.raises(ValueError, match=">= 0"):
+        ds.set_epoch(-1)
+
+
+def test_dataset_set_epoch_non_int_raises(tmp_path: Path):
+    ds = _build_dataset(tmp_path, stage=1)
+    with pytest.raises(ValueError, match="int"):
+        ds.set_epoch(1.5)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="int"):
+        ds.set_epoch(True)  # bool excluded
+
+
+def test_dataset_stage1_same_epoch_deterministic(tmp_path: Path):
+    """Same seed + same epoch + same idx → identical x0 and x1."""
+    ds_a = _build_dataset(tmp_path, stage=1, seed=42)
+    ds_b = _build_dataset(tmp_path, stage=1, seed=42)
+    ds_a.set_epoch(3)
+    ds_b.set_epoch(3)
+    for i in range(len(ds_a)):
+        a, b = ds_a[i], ds_b[i]
+        torch.testing.assert_close(a["x0"], b["x0"])
+        torch.testing.assert_close(a["x1"], b["x1"])
+
+
+def test_dataset_stage1_different_epoch_changes_x0_noise(tmp_path: Path):
+    """Different epoch should resample the stage-1 Gaussian noise."""
+    ds = _build_dataset(tmp_path, stage=1, seed=0)
+    ds.set_epoch(0)
+    x0_e0 = ds[0]["x0"]
+    ds.set_epoch(1)
+    x0_e1 = ds[0]["x0"]
+    assert not torch.allclose(x0_e0, x0_e1)
+
+
+def test_dataset_stage2_same_epoch_deterministic(tmp_path: Path):
+    """Same seed + same epoch + same idx → identical control_metadata_idx and tensors."""
+    ds_a = _build_dataset(tmp_path, stage=2, seed=42)
+    ds_b = _build_dataset(tmp_path, stage=2, seed=42)
+    ds_a.set_epoch(7)
+    ds_b.set_epoch(7)
+    for i in range(len(ds_a)):
+        a, b = ds_a[i], ds_b[i]
+        torch.testing.assert_close(a["x0"], b["x0"])
+        torch.testing.assert_close(a["x1"], b["x1"])
+        assert a["meta"]["control_metadata_idx"] == b["meta"]["control_metadata_idx"]
+
+
+def test_dataset_stage2_different_epoch_can_change_control(tmp_path: Path):
+    """With multiple controls on the same plate, different epochs should
+    pick different controls at least sometimes."""
+    rows = [
+        _row("expA", 1, "A01", "drugA", "CCO"),         # idx 0 treated
+        _row("expA", 1, "C01", EMPTY_CONTROL, None),    # idx 1 control
+        _row("expA", 1, "C02", EMPTY_CONTROL, None),    # idx 2 control
+        _row("expA", 1, "C03", EMPTY_CONTROL, None),    # idx 3 control
+        _row("expA", 1, "C04", EMPTY_CONTROL, None),    # idx 4 control
+    ]
+    split = split_metadata(_make_metadata_df(rows))
+    pair_idx = build_pair_index(split.treated, split.control)
+    _write_plate_npz(tmp_path, "expA", 1, ["A01", "C01", "C02", "C03", "C04"])
+    cache = PlateCache(tmp_path)
+    fp_cache = _make_fp_cache(["drugA"])
+    ds = CellFluxDataset(
+        split, pair_idx, cache, fp_cache,
+        torch.zeros(8), torch.ones(8),
+        stage=2, rng_seed=0,
+    )
+    picks: set[int] = set()
+    for ep in range(20):
+        ds.set_epoch(ep)
+        picks.add(ds[0]["meta"]["control_metadata_idx"])
+    assert len(picks) > 1
+
+
+def test_dataset_collate_works_after_set_epoch(tmp_path: Path):
+    """Collation still produces correct shapes after set_epoch is called."""
+    ds = _build_dataset(tmp_path, stage=2)
+    ds.set_epoch(5)
+    batch = CellFluxDataset.collate([ds[i] for i in range(2)])
+    assert batch["x0"].shape == (2, 169, 8)
+    assert batch["x1"].shape == (2, 169, 8)
+    assert batch["condition"].shape == (2, 1024)
+    assert isinstance(batch["meta"], dict)
+
+
+def test_dataset_dataloader_works_after_set_epoch(tmp_path: Path):
+    ds = _build_dataset(tmp_path, stage=1)
+    ds.set_epoch(2)
+    loader = DataLoader(ds, batch_size=2, collate_fn=CellFluxDataset.collate)
+    batch = next(iter(loader))
+    assert batch["x0"].shape == (2, 169, 8)
+    assert torch.isfinite(batch["x0"]).all()
