@@ -18,13 +18,34 @@ import numpy as np
 
 
 @lru_cache(maxsize=8)
-def _morgan_generator(radius: int, n_bits: int):
+def _morgan_generator(radius: int, n_bits: int, use_chirality: bool):
     from rdkit.Chem import rdFingerprintGenerator
-    return rdFingerprintGenerator.GetMorganGenerator(radius=radius, fpSize=n_bits)
+    return rdFingerprintGenerator.GetMorganGenerator(
+        radius=radius, fpSize=n_bits, includeChirality=use_chirality
+    )
 
 
-def compute_morgan(smiles: str, radius: int = 2, n_bits: int = 1024) -> np.ndarray:
+def compute_morgan(
+    smiles: str,
+    radius: int = 2,
+    n_bits: int = 1024,
+    use_chirality: bool = False,
+) -> np.ndarray:
     """Compute a Morgan (ECFP) fingerprint bit vector for a single SMILES.
+
+    Parameters
+    ----------
+    smiles : str
+        Input SMILES; extended-SMILES ``|...|`` annotations are tolerated.
+    radius : int
+        ECFP radius (ECFP4 = radius 2).
+    n_bits : int
+        Width of the bit vector.
+    use_chirality : bool
+        If ``False`` (default), the fingerprint is stereo-blind — L/D
+        enantiomers map to identical bit vectors. If ``True``, the RDKit
+        ``includeChirality`` flag is passed through so stereo information
+        contributes to the bits.
 
     Returns
     -------
@@ -51,7 +72,7 @@ def compute_morgan(smiles: str, radius: int = 2, n_bits: int = 1024) -> np.ndarr
     if mol is None:
         raise ValueError(f"RDKit failed to parse SMILES: {smiles!r}")
 
-    gen = _morgan_generator(radius, n_bits)
+    gen = _morgan_generator(radius, n_bits, use_chirality)
     bv = gen.GetFingerprint(mol)
     arr = np.zeros((n_bits,), dtype=np.uint8)
     ConvertToNumpyArray(bv, arr)
@@ -72,6 +93,7 @@ class FingerprintCache:
     treatments: np.ndarray     # (N,) <U
     radius: int
     n_bits: int
+    use_chirality: bool
 
     def __post_init__(self) -> None:
         n = len(self.fps)
@@ -88,6 +110,10 @@ class FingerprintCache:
             )
         if not ((self.fps == 0) | (self.fps == 1)).all():
             raise ValueError("fps must be binary {0, 1}")
+        if not isinstance(self.use_chirality, bool):
+            raise ValueError(
+                f"use_chirality must be bool, got {type(self.use_chirality).__name__}"
+            )
 
     @cached_property
     def _smiles_to_idx(self) -> dict[str, int]:
@@ -130,16 +156,25 @@ def load_fp_cache(path: str | Path) -> FingerprintCache:
 
     Expected keys in the npz: ``fps`` (uint8, ``(N, n_bits)``), ``smiles``
     (``<U``, ``(N,)``), ``treatments`` (``<U``, ``(N,)``), ``radius`` (int),
-    ``n_bits`` (int).
+    ``n_bits`` (int), ``use_chirality`` (bool). Raises if any key is
+    missing so we never silently load a cache with unknown settings.
     """
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"fingerprint cache not found: {path}")
     with np.load(path, allow_pickle=False) as data:
+        required = {"fps", "smiles", "treatments", "radius", "n_bits", "use_chirality"}
+        missing = required - set(data.files)
+        if missing:
+            raise ValueError(
+                f"fingerprint cache at {path} is missing keys {sorted(missing)}; "
+                "regenerate via scripts/precompute_fingerprints.py"
+            )
         return FingerprintCache(
             fps=np.ascontiguousarray(data["fps"], dtype=np.uint8),
             smiles=np.asarray(data["smiles"]),
             treatments=np.asarray(data["treatments"]),
             radius=int(data["radius"]),
             n_bits=int(data["n_bits"]),
+            use_chirality=bool(data["use_chirality"]),
         )

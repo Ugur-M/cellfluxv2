@@ -1,18 +1,30 @@
 """Precompute Morgan (ECFP) fingerprints for the rxrx3 compound vocabulary.
 
-Reads the rxrx3 metadata CSV, filters to treated compound rows, validates
-that every treatment maps to a single SMILES, computes Morgan fingerprints
-for each unique ``(treatment, SMILES)`` pair, and writes the table to an
-``.npz`` the dataset loader can mmap.
+Reads the rxrx3 metadata CSV, filters to treated compound rows, computes
+Morgan fingerprints for each unique ``(treatment, SMILES)`` pair, and
+writes the table to an ``.npz`` the dataset loader can mmap.
+
+Multi-SMILES treatments are allowed only when every variant produces an
+identical Morgan fingerprint under the configured ``(radius, n_bits,
+use_chirality)`` settings — this is the expected stereo-annotation case
+(``[C@H]`` vs ``[C@@H]`` under the default stereo-blind Morgan). If any
+variant pair produces *different* fingerprints, the script raises so the
+metadata can be reconciled.
+
+Any SMILES that fails to parse raises and no cache is written, so we
+never produce a partial table.
 
 Usage:
     python scripts/precompute_fingerprints.py \\
         --metadata /teamspace/studios/this_studio/2DGen/data/rxrx3_core/metadata_rxrx3_core_normalized.csv \\
-        --output data/fingerprints_morgan_r2_b1024.npz
+        --output data/fingerprints_morgan_r2_b1024.npz \\
+        [--use-chirality] \\
+        [--dedupe-report data/dedupe_report.csv]
 """
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -38,28 +50,34 @@ def select_treated(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def validate_and_dedupe_treatments(
-    treated: pd.DataFrame, radius: int, n_bits: int
-) -> pd.DataFrame:
+    treated: pd.DataFrame,
+    radius: int,
+    n_bits: int,
+    use_chirality: bool,
+) -> tuple[pd.DataFrame, dict[str, list[str]]]:
     """Reconcile treatments that map to multiple SMILES.
 
-    Some rxrx3 treatments carry several SMILES strings that differ only in
-    stereochemistry annotations (`[C@H]` vs `[C@@H]`, `|r|` markers, etc.).
-    Default Morgan fingerprints are stereo-blind, so these variants
-    produce identical bit vectors and are safe to collapse.
-
     For each treatment with multiple SMILES:
-      - If all variants produce **identical** Morgan FPs at the requested
-        ``(radius, n_bits)``, keep the lexicographically smallest SMILES
-        as canonical and drop the rest (logged).
-      - If any variants produce **different** FPs, raise — that is the
-        genuinely unexpected case the user asked us to surface.
+      - If every variant produces **identical** Morgan FPs at the requested
+        ``(radius, n_bits, use_chirality)``, keep the lexicographically
+        smallest SMILES as canonical and drop the rest.
+      - If any variants produce **different** FPs, raise — the genuinely
+        unexpected case.
+
+    Returns
+    -------
+    (filtered_df, dedupe_info)
+        ``filtered_df`` is ``treated`` with non-canonical SMILES removed.
+        ``dedupe_info`` maps each multi-SMILES treatment to the full sorted
+        list of its SMILES variants (the first entry is the canonical one
+        kept; the rest were dropped).
     """
     counts = treated.groupby("treatment")["SMILES"].nunique()
     multi = counts[counts > 1]
     if len(multi) == 0:
-        return treated
+        return treated, {}
 
-    canonical: dict[str, str] = {}
+    dedupe_info: dict[str, list[str]] = {}
     truly_unexpected: list[tuple[str, list[str], str]] = []
 
     for treatment in multi.index:
@@ -67,17 +85,25 @@ def validate_and_dedupe_treatments(
             treated.loc[treated["treatment"] == treatment, "SMILES"].unique().tolist()
         )
         try:
-            fps = [compute_morgan(s, radius=radius, n_bits=n_bits) for s in variants]
+            fps = [
+                compute_morgan(s, radius=radius, n_bits=n_bits, use_chirality=use_chirality)
+                for s in variants
+            ]
         except ValueError as e:
             truly_unexpected.append((treatment, variants, f"RDKit parse failure: {e}"))
             continue
         base = fps[0]
         if not all(np.array_equal(base, fp) for fp in fps[1:]):
             truly_unexpected.append(
-                (treatment, variants, f"Morgan FPs differ across variants (r={radius}, b={n_bits})")
+                (
+                    treatment,
+                    variants,
+                    f"Morgan FPs differ across variants "
+                    f"(r={radius}, b={n_bits}, chirality={use_chirality})",
+                )
             )
             continue
-        canonical[treatment] = variants[0]  # lexicographically smallest
+        dedupe_info[treatment] = variants  # variants[0] is canonical
 
     if truly_unexpected:
         details = "\n".join(
@@ -90,23 +116,64 @@ def validate_and_dedupe_treatments(
             f"requires metadata resolution:\n{details}"
         )
 
-    print(
-        f"[fp] note: {len(canonical)} treatment(s) had multiple SMILES that "
-        f"produce identical Morgan FPs (stereo annotations); keeping "
-        f"lexicographically smallest variant:",
-        file=sys.stderr,
-    )
-    for t, c in list(canonical.items())[:10]:
-        print(f"    - {t}: kept {c!r}", file=sys.stderr)
-    if len(canonical) > 10:
-        print(f"    ... and {len(canonical) - 10} more", file=sys.stderr)
+    if dedupe_info:
+        print(
+            f"[fp] note: {len(dedupe_info)} treatment(s) had multiple SMILES that "
+            f"produce identical Morgan FPs under the configured settings; "
+            f"keeping lexicographically smallest variant:",
+            file=sys.stderr,
+        )
+        for t, v in list(dedupe_info.items())[:10]:
+            print(f"    - {t}: kept {v[0]!r}", file=sys.stderr)
+        if len(dedupe_info) > 10:
+            print(f"    ... and {len(dedupe_info) - 10} more", file=sys.stderr)
 
     keep_mask = pd.Series(True, index=treated.index)
-    for treatment, canonical_smiles in canonical.items():
+    for treatment, variants in dedupe_info.items():
+        canonical = variants[0]
         is_treatment = treated["treatment"] == treatment
-        is_noncanonical = is_treatment & (treated["SMILES"] != canonical_smiles)
+        is_noncanonical = is_treatment & (treated["SMILES"] != canonical)
         keep_mask &= ~is_noncanonical
-    return treated[keep_mask]
+    return treated[keep_mask], dedupe_info
+
+
+def write_dedupe_report(
+    dedupe_info: dict[str, list[str]],
+    out_path: Path,
+    radius: int,
+    n_bits: int,
+    use_chirality: bool,
+) -> None:
+    """Write one row per treatment with multiple SMILES variants."""
+    rows = []
+    for treatment, variants in sorted(dedupe_info.items()):
+        canonical = variants[0]
+        dropped = variants[1:]
+        rows.append(
+            {
+                "treatment": treatment,
+                "n_variants": len(variants),
+                "canonical_smiles": canonical,
+                "variants_dropped": json.dumps(dropped),
+                "radius": radius,
+                "n_bits": n_bits,
+                "use_chirality": use_chirality,
+            }
+        )
+    df = pd.DataFrame(
+        rows,
+        columns=[
+            "treatment",
+            "n_variants",
+            "canonical_smiles",
+            "variants_dropped",
+            "radius",
+            "n_bits",
+            "use_chirality",
+        ],
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out_path, index=False)
 
 
 def main() -> None:
@@ -115,6 +182,17 @@ def main() -> None:
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--radius", type=int, default=2)
     p.add_argument("--n-bits", type=int, default=1024)
+    p.add_argument(
+        "--use-chirality",
+        action="store_true",
+        help="Encode stereo information in Morgan FPs (default off).",
+    )
+    p.add_argument(
+        "--dedupe-report",
+        type=Path,
+        default=None,
+        help="Optional CSV: one row per treatment with multiple SMILES variants.",
+    )
     args = p.parse_args()
 
     df = pd.read_csv(args.metadata)
@@ -123,7 +201,23 @@ def main() -> None:
     treated = select_treated(df)
     print(f"[fp] treated compound rows: {len(treated)}", file=sys.stderr)
 
-    treated = validate_and_dedupe_treatments(treated, args.radius, args.n_bits)
+    treated, dedupe_info = validate_and_dedupe_treatments(
+        treated, args.radius, args.n_bits, args.use_chirality
+    )
+
+    if args.dedupe_report is not None:
+        write_dedupe_report(
+            dedupe_info,
+            args.dedupe_report,
+            args.radius,
+            args.n_bits,
+            args.use_chirality,
+        )
+        print(
+            f"[fp] wrote dedupe report ({len(dedupe_info)} rows) to "
+            f"{args.dedupe_report}",
+            file=sys.stderr,
+        )
 
     pairs = (
         treated[["treatment", "SMILES"]]
@@ -145,7 +239,12 @@ def main() -> None:
 
     for _, row in pairs.iterrows():
         try:
-            fp = compute_morgan(row["SMILES"], radius=args.radius, n_bits=args.n_bits)
+            fp = compute_morgan(
+                row["SMILES"],
+                radius=args.radius,
+                n_bits=args.n_bits,
+                use_chirality=args.use_chirality,
+            )
         except ValueError as e:
             failures.append((row["treatment"], row["SMILES"], str(e)))
             continue
@@ -154,12 +253,13 @@ def main() -> None:
         treatments_list.append(row["treatment"])
 
     if failures:
-        print(
-            f"[fp] WARNING: {len(failures)} SMILES failed to parse (first 5):",
-            file=sys.stderr,
+        head = "\n".join(f"  - {t}: {s!r} -> {e}" for t, s, e in failures[:20])
+        tail = f"\n  ... and {len(failures) - 20} more" if len(failures) > 20 else ""
+        raise ValueError(
+            f"{len(failures)} SMILES failed to parse; refusing to write a "
+            f"partial fingerprint cache. Resolve in metadata before re-running.\n"
+            f"{head}{tail}"
         )
-        for t, s, e in failures[:5]:
-            print(f"    - {t}: {s!r} -> {e}", file=sys.stderr)
 
     if not fps_list:
         raise RuntimeError("No fingerprints produced; nothing to write.")
@@ -191,11 +291,13 @@ def main() -> None:
         treatments=treatments,
         radius=np.int32(args.radius),
         n_bits=np.int32(args.n_bits),
+        use_chirality=np.bool_(args.use_chirality),
     )
     size_mb = args.output.stat().st_size / 1e6
     print(
         f"[fp] wrote {args.output} ({size_mb:.2f} MB): "
-        f"{len(fps)} fingerprints x {args.n_bits} bits, radius={args.radius}",
+        f"{len(fps)} fingerprints x {args.n_bits} bits, "
+        f"radius={args.radius}, use_chirality={args.use_chirality}",
         file=sys.stderr,
     )
 

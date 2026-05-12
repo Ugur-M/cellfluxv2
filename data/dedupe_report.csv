@@ -1,0 +1,11 @@
+treatment,n_variants,canonical_smiles,variants_dropped,radius,n_bits,use_chirality
+aztreonam,2,"C[C@@H]1[C@H](NC(=O)C(=N/OC(C)(C)C(O)=O)\C2=CSC(N)=N2)C(=O)N1S(O)(=O)=O |c:19,t:15|","[""C[C@H]1[C@H](NC(=O)C(=N/OC(C)(C)C(O)=O)\\C2=CSC(N)=N2)C(=O)N1S(O)(=O)=O |a:1,2,r,c:19,t:15|""]",2,1024,False
+epirubicin,2,"COC1=C2C(=O)C3=C(O)C4=C(C[C@](O)(C[C@H]4O[C@H]4C[C@H](N)[C@@H](O)[C@H](C)O4)C(=O)CO)C(O)=C3C(=O)C2=CC=C1 |a:12,15,17,19,21,23,r,c:2,6,33,39,41,t:9|","[""[H][C@@]1(C[C@H](N)[C@@H](O)[C@H](C)O1)O[C@H]1C[C@@](O)(CC2=C(O)C3=C(C(O)=C12)C(=O)C1=C(C=CC=C1OC)C3=O)C(=O)CO |r,c:17,20,31,33,t:23,29|""]",2,1024,False
+ipratropium,2,"CC(C)[N+]1(C)C2CCC1CC(C2)OC(=O)C(CO)C1=CC=CC=C1 |c:22,24,t:20|","[""CC(C)[N+]1(C)C2CC[C@H]1C[C@H](C2)OC(=O)C(CO)C1=CC=CC=C1 |a:8,10,r,c:22,24,t:20,THB:1:3:10.11.9:6.7,4:3:10.11.9:6.7|""]",2,1024,False
+levodropropizine,2,"OC[C@@H](O)CN1CCN(CC1)C1=CC=CC=C1 |a:2,r,c:14,16,t:12|","[""OC[C@H](O)CN1CCN(CC1)C1=CC=CC=C1 |c:14,16,t:12|""]",2,1024,False
+metergoline,2,"CN1C=C2CC3[C@@H](CC(CNC(=O)OCC4=CC=CC=C4)CN3C)C3=C2C1=CC=C3 |a:6,r,c:17,19,26,32,t:2,15,30|","[""[H][C@]1(CNC(=O)OCC2=CC=CC=C2)CN(C)[C@]2([H])CC3=CN(C)C4=CC=CC(=C34)[C@@]2([H])C1 |c:10,12,27,t:8,21,25,29|""]",2,1024,False
+norgestrel,2,"CC[C@]12CCC3[C@@H](CCC4=CC(=O)CC[C@H]34)[C@@H]1CC[C@@]2(O)C#C |a:2,6,15,16,19,r,t:9|","[""CC[C@]12CC[C@H]3[C@@H](CCC4=CC(=O)CC[C@H]34)[C@@H]1CC[C@@]2(O)C#C |t:9|""]",2,1024,False
+paliperidone,2,"CC1=C(CCN2CCC(CC2)C2=NOC3=C2C=CC(F)=C3)C(=O)N2CCCC(O)C2=N1 |c:1,15,18,21,33,t:12|","[""CC1=C(CCN2CCC(CC2)C2=NOC3=C2C=CC(F)=C3)C(=O)N2CCC[C@@H](O)C2=N1 |a:27,r,c:1,15,18,21,33,t:12|""]",2,1024,False
+pergolide,2,"CCCN1C[C@H](CSC)C[C@H]2[C@H]1CC1=CNC3=CC=CC2=C13 |a:5,10,11,r,c:19,22,t:14,17|","[""[H][C@@]12CC3=CNC4=C3C(=CC=C4)[C@@]1([H])C[C@H](CSC)CN2CCC |c:6,9,11,t:3|""]",2,1024,False
+sparfloxacin,2,"CC1CN(C[C@H](C)N1)C1=C(F)C2=C(C(N)=C1F)C(=O)C(=CN2C1CC1)C(O)=O |a:5,r,c:9,12,15,21|","[""C[C@H]1CN(C[C@@H](C)N1)C1=C(F)C2=C(C(N)=C1F)C(=O)C(=CN2C1CC1)C(O)=O |c:9,12,15,21|""]",2,1024,False
+voglibose,2,OCC(CO)N[C@H]1C[C@@](O)(CO)[C@@H](O)[C@H](O)[C@H]1O,"[""OCC(CO)N[C@H]1C[C@](O)(CO)[C@@H](O)[C@H](O)[C@H]1O |a:6,8,12,14,16,r|""]",2,1024,False

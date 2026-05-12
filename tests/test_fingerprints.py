@@ -13,7 +13,11 @@ ASPIRIN = "CC(=O)OC1=CC=CC=C1C(=O)O"
 CAFFEINE = "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
 PHLORETIN_EXT = "OC1=CC=C(CCC(=O)C2=C(O)C=C(O)C=C2O)C=C1 |c:9,15,19,t:1,3,12|"
 PHLORETIN_PLAIN = "OC1=CC=C(CCC(=O)C2=C(O)C=C(O)C=C2O)C=C1"
+L_ALA = "N[C@@H](C)C(=O)O"
+D_ALA = "N[C@H](C)C(=O)O"
 
+
+# -- compute_morgan -----------------------------------------------------------
 
 def test_compute_morgan_shape_and_dtype():
     fp = compute_morgan(ASPIRIN)
@@ -69,14 +73,51 @@ def test_compute_morgan_radius_changes_output():
     assert not np.array_equal(fp_r1, fp_r3)
 
 
-def _make_cache_npz(tmp_path: Path, n_bits: int = 1024) -> Path:
+# -- compute_morgan: use_chirality -------------------------------------------
+
+def test_compute_morgan_chirality_off_collapses_enantiomers():
+    """Default Morgan (use_chirality=False) is stereo-blind: L/D-alanine identical."""
+    a = compute_morgan(L_ALA, use_chirality=False)
+    b = compute_morgan(D_ALA, use_chirality=False)
+    np.testing.assert_array_equal(a, b)
+
+
+def test_compute_morgan_chirality_on_distinguishes_enantiomers():
+    """With use_chirality=True, L/D-alanine produce different bit vectors."""
+    a = compute_morgan(L_ALA, use_chirality=True)
+    b = compute_morgan(D_ALA, use_chirality=True)
+    assert not np.array_equal(a, b)
+
+
+def test_compute_morgan_chirality_flag_changes_chiral_output():
+    """For a chiral molecule, flipping use_chirality changes the FP."""
+    off = compute_morgan(L_ALA, use_chirality=False)
+    on = compute_morgan(L_ALA, use_chirality=True)
+    assert not np.array_equal(off, on)
+
+
+def test_compute_morgan_chirality_flag_no_effect_on_achiral():
+    """An achiral molecule (caffeine) should give the same FP either way."""
+    off = compute_morgan(CAFFEINE, use_chirality=False)
+    on = compute_morgan(CAFFEINE, use_chirality=True)
+    np.testing.assert_array_equal(off, on)
+
+
+# -- FingerprintCache helpers -------------------------------------------------
+
+def _make_cache_npz(
+    where: Path,
+    n_bits: int = 1024,
+    use_chirality: bool = False,
+) -> Path:
+    """Write a tiny synthetic cache. `where` may be a directory or a file path."""
+    out = where if where.suffix == ".npz" else where / "fp.npz"
     fps = np.zeros((3, n_bits), dtype=np.uint8)
     fps[0, 7] = 1
     fps[1, 42] = 1
     fps[2, n_bits - 1] = 1
     smiles = np.array([ASPIRIN, CAFFEINE, PHLORETIN_PLAIN], dtype=str)
     treatments = np.array(["aspirin", "caffeine", "Phloretin"], dtype=str)
-    out = tmp_path / "fp.npz"
     np.savez_compressed(
         out,
         fps=fps,
@@ -84,9 +125,12 @@ def _make_cache_npz(tmp_path: Path, n_bits: int = 1024) -> Path:
         treatments=treatments,
         radius=np.int32(2),
         n_bits=np.int32(n_bits),
+        use_chirality=np.bool_(use_chirality),
     )
     return out
 
+
+# -- FingerprintCache: roundtrip + lookups -----------------------------------
 
 def test_fingerprint_cache_roundtrip(tmp_path: Path):
     path = _make_cache_npz(tmp_path)
@@ -94,10 +138,9 @@ def test_fingerprint_cache_roundtrip(tmp_path: Path):
     assert len(cache) == 3
     assert cache.n_bits == 1024
     assert cache.radius == 2
-    # SMILES-keyed lookup
+    assert cache.use_chirality is False
     fp0 = cache.by_smiles(ASPIRIN)
     assert fp0.shape == (1024,) and fp0.dtype == np.uint8 and fp0[7] == 1
-    # treatment-keyed lookup pointing at the same row
     fp0_t = cache.by_treatment("aspirin")
     np.testing.assert_array_equal(fp0, fp0_t)
 
@@ -118,6 +161,36 @@ def test_fingerprint_cache_missing_key_raises(tmp_path: Path):
         cache.by_treatment("missing")
 
 
+def test_fingerprint_cache_use_chirality_roundtrip(tmp_path: Path):
+    """Both True and False must round-trip through the npz."""
+    for chirality in (False, True):
+        path = _make_cache_npz(
+            tmp_path / f"chir_{chirality}.npz",
+            use_chirality=chirality,
+        )
+        cache = load_fp_cache(path)
+        assert cache.use_chirality is chirality
+        assert isinstance(cache.use_chirality, bool)
+
+
+def test_load_fp_cache_rejects_missing_use_chirality(tmp_path: Path):
+    """Loader must fail rather than silently default if use_chirality is absent."""
+    path = tmp_path / "legacy.npz"
+    np.savez_compressed(
+        path,
+        fps=np.zeros((1, 4), dtype=np.uint8),
+        smiles=np.array(["x"], dtype=str),
+        treatments=np.array(["X"], dtype=str),
+        radius=np.int32(2),
+        n_bits=np.int32(4),
+        # use_chirality intentionally absent
+    )
+    with pytest.raises(ValueError, match="use_chirality"):
+        load_fp_cache(path)
+
+
+# -- FingerprintCache: invariant rejections ----------------------------------
+
 def test_fingerprint_cache_rejects_nonbinary():
     with pytest.raises(ValueError, match="binary"):
         FingerprintCache(
@@ -126,6 +199,7 @@ def test_fingerprint_cache_rejects_nonbinary():
             treatments=np.array(["X"], dtype=str),
             radius=2,
             n_bits=3,
+            use_chirality=False,
         )
 
 
@@ -137,6 +211,7 @@ def test_fingerprint_cache_rejects_shape_mismatch():
             treatments=np.array(["X"], dtype=str),
             radius=2,
             n_bits=1024,
+            use_chirality=False,
         )
 
 
@@ -148,6 +223,7 @@ def test_fingerprint_cache_rejects_length_mismatch():
             treatments=np.array(["x", "y"], dtype=str),
             radius=2,
             n_bits=4,
+            use_chirality=False,
         )
 
 
@@ -159,6 +235,19 @@ def test_fingerprint_cache_rejects_wrong_dtype():
             treatments=np.array(["X"], dtype=str),
             radius=2,
             n_bits=4,
+            use_chirality=False,
+        )
+
+
+def test_fingerprint_cache_rejects_non_bool_chirality():
+    with pytest.raises(ValueError, match="use_chirality"):
+        FingerprintCache(
+            fps=np.zeros((1, 4), dtype=np.uint8),
+            smiles=np.array(["x"], dtype=str),
+            treatments=np.array(["X"], dtype=str),
+            radius=2,
+            n_bits=4,
+            use_chirality="false",  # type: ignore[arg-type]
         )
 
 
