@@ -1,0 +1,196 @@
+role,experiment,plate,address,treatment,metadata_idx
+treated,compound-003,44,F14,CEP-18770,337
+treated,compound-004,20,O09,Fluconazole,674
+treated,compound-003,20,E15,Carfilzomib,877
+treated,compound-003,44,Y16,harringtonine,1442
+treated,compound-001,20,E41,digitoxin,1767
+treated,compound-003,13,C05,Amfebutamone,2716
+treated,compound-003,8,D20,Asenapine,3134
+treated,compound-004,39,R08,Gemcitabine hydrochloride,3637
+treated,compound-003,46,G05,BI 2536,4103
+treated,compound-002,16,N10,Levamisole,4597
+treated,compound-004,38,T36,RG-7112,5676
+treated,compound-003,46,P33,enilconazole,6675
+treated,compound-003,44,S26,suxibuzone,7694
+treated,compound-003,48,Q31,sparteine-sulfate,9644
+treated,compound-003,20,J06,Ioversol,11081
+treated,compound-003,45,P18,CEP-18770,13211
+treated,compound-004,18,M18,Topotecan,13433
+treated,compound-004,41,Q24,GDC-0994,14291
+treated,compound-004,48,R26,Ridaforolimus,17324
+treated,compound-003,48,S06,fosamprenavir,17894
+treated,compound-004,44,S29,BI 2536,17958
+treated,compound-004,39,S11,BI 2536,18397
+treated,compound-003,47,O26,harringtonine,18782
+treated,compound-003,17,P36,Clofibric acid,19751
+treated,compound-004,23,W38,CEP-18770,20086
+treated,compound-003,44,AB06,BI 2536,20171
+treated,compound-004,44,T22,Flavopiridol,20717
+treated,compound-003,46,P37,gallopamil,26111
+treated,compound-004,46,O18,Enoximone,26206
+treated,compound-004,31,I38,MLN9708,27856
+treated,compound-004,37,R21,6-Mercaptopurine (6-MP),28261
+treated,compound-004,43,H15,Sildenafil,29395
+treated,compound-003,7,X38,Thiazovivin,29932
+treated,compound-003,48,N36,fosfomycin,31620
+treated,compound-004,38,Q27,Temsirolimus,32129
+treated,compound-004,17,T24,aztreonam,33110
+treated,compound-004,47,U28,CEP-18770,33901
+treated,compound-004,20,T13,BMS-777607,33957
+treated,compound-003,8,K28,Metronidazole,34059
+treated,compound-003,45,G17,Podophyllotoxin,34467
+treated,compound-004,21,Q17,Topotecan,34897
+treated,compound-004,18,L19,L-Glutamic Acid,35320
+treated,compound-003,7,X42,Thiazovivin,35438
+treated,compound-003,13,N26,CEP-18770,35620
+treated,compound-004,43,X21,Flavopiridol,37471
+treated,compound-004,10,R42,CKD 602,38206
+treated,compound-003,44,Y15,maropitant,38328
+treated,compound-003,47,V07,valrubicin,38516
+treated,compound-004,23,E32,MLN2238,38521
+treated,compound-003,2,W26,MLN2238,38758
+treated,compound-004,47,O19,BMN 673,39723
+treated,compound-003,6,Z11,CEP-18770,39966
+treated,compound-004,43,U20,Enoximone,41555
+treated,compound-001,23,V28,digitoxin,41803
+treated,compound-004,39,V22,Acamprosate,42615
+treated,compound-001,37,AE42,MI-773,42973
+treated,compound-003,46,O19,ethosuximide,43536
+treated,compound-003,46,D38,Epothilone A,45411
+treated,compound-004,17,M31,MI-773,45791
+treated,compound-004,25,Q27,LY2835219,46840
+treated,compound-004,23,G35,CEP-18770,48441
+treated,compound-003,45,X47,nicergoline,50371
+treated,compound-003,46,S23,BI 2536,50674
+treated,compound-003,19,E06,Thimerosal,51271
+treated,compound-003,5,N31,Albendazole,51676
+treated,compound-003,48,AD47,ginsenoside-rg3,52161
+treated,compound-004,23,T33,Peficitinb,52199
+treated,compound-003,48,V31,P7C3,53707
+treated,compound-004,16,K24,ABT-263,54194
+treated,compound-003,44,F43,L-Theanine,54523
+treated,compound-004,45,T23,LY2228820,57152
+treated,compound-003,45,U41,iohexol,58015
+treated,compound-003,23,U31,mupirocin,58034
+treated,compound-001,2,B36,MI-773,61666
+treated,compound-003,43,N36,epinastine,61986
+treated,compound-004,23,V14,Epothilone A,62587
+treated,compound-003,43,L17,miltefosine,63856
+treated,compound-004,39,O12,lovastatin,64927
+treated,compound-003,48,L13,setiptiline,65034
+treated,compound-004,48,Q08,Peficitinb,65681
+treated,compound-004,47,O13,MLN2238,66056
+treated,compound-004,44,Q29,GDC-0994,66154
+treated,compound-004,44,O40,B-HT 920,67512
+treated,compound-004,14,L02,Foretinib,67528
+treated,compound-003,46,P15,firocoxib,67708
+treated,compound-004,45,P23,BIRB 796,67826
+treated,compound-003,23,D31,CEP-18770,67926
+treated,compound-004,39,L25,Flavopiridol,68945
+treated,compound-003,19,P30,PF-04929113,69803
+treated,compound-001,37,Q16,Bardoxolone methyl,69875
+treated,compound-004,22,U17,Flavopiridol,70073
+treated,compound-001,26,T13,Dronedarone,70641
+treated,compound-004,20,N13,CEP-18770,71858
+treated,compound-004,45,P14,Ridaforolimus,71947
+treated,compound-003,46,Z07,MLN2238,72119
+treated,compound-004,39,L32,Methylergonovine,73115
+treated,compound-003,12,M37,Mitoxantrone,76534
+treated,compound-004,39,P21,Cromolyn,76611
+treated,compound-003,48,P21,dropropizine,77002
+treated,compound-003,43,L29,drofenine,78262
+treated,compound-004,39,T26,Flavopiridol,79560
+treated,compound-003,8,E16,Atropine,81106
+treated,compound-004,18,X25,Epothilone A,81687
+treated,compound-004,16,G20,ABT-263,81701
+treated,compound-004,14,B42,Foretinib,82025
+treated,compound-003,21,N28,Epothilone A,83138
+treated,compound-003,45,L02,heptaminol,83401
+treated,compound-004,44,P31,Sibutramine,83494
+treated,compound-003,45,U31,nicergoline,83601
+treated,compound-003,45,AD22,chloropyramine,84485
+treated,compound-003,47,R39,BI 2536,84807
+treated,compound-001,28,P45,floctafenine,84920
+treated,compound-004,44,N23,Y-25130 hydrochloride,85593
+treated,compound-004,41,Q21,Rapamycin,85610
+treated,compound-003,43,I27,dimetridazole,86444
+treated,compound-003,45,N44,homoharringtonine,86456
+treated,compound-003,45,I16,L-proline,88246
+treated,compound-004,45,K12,Bafetinib,88805
+treated,compound-004,23,O17,Cefdinir,90070
+treated,compound-004,46,S21,Sildenafil,90397
+treated,compound-004,47,I31,MLN9708,90788
+treated,compound-003,18,R29,Epothilone A,97681
+treated,compound-003,46,M18,pitavastatin,98869
+treated,compound-003,46,L34,enilconazole,98893
+treated,compound-004,38,AB37,RG-7112,99203
+treated,compound-003,13,M45,Thimerosal,100561
+treated,compound-003,43,S27,Flavopiridol,100690
+treated,compound-003,45,I14,garenoxacin,101017
+treated,compound-004,43,N23,MLN2238,101569
+treated,compound-003,44,O11,silibinin,103633
+treated,compound-004,43,O11,Palbociclib,105798
+treated,compound-003,13,C04,Eugenol (no structure),106003
+treated,compound-004,46,E19,MI-773,110535
+treated,compound-003,47,C05,oxibendazole,111250
+treated,compound-003,7,M22,MI-773,111688
+treated,compound-003,45,R11,penbutolol,112040
+treated,compound-003,48,R34,fludroxycortide,114042
+treated,compound-004,44,P40,LY2835219,114379
+treated,compound-004,20,W27,R 7050,116130
+treated,compound-003,44,P32,Mitiglinide,116382
+treated,compound-004,39,L27,MLN9708,117064
+treated,compound-003,8,F22,MLN2238,117079
+treated,compound-003,44,J03,L-Citrulline,118394
+treated,compound-003,45,V09,Podophyllotoxin,118600
+treated,compound-003,44,E12,Mitiglinide,119469
+treated,compound-004,26,R19,Tigecycline,121432
+treated,compound-003,43,O13,Avatrombopag,121465
+treated,compound-003,6,B05,Cabazitaxel,122299
+treated,compound-003,23,P14,Vilazodone,122522
+treated,compound-004,23,R13,Ethinyl estradiol,123078
+treated,compound-003,45,P21,heptaminol,123233
+treated,compound-004,35,U30,Tanshinone IIA sulfonate sodium,124573
+treated,compound-004,47,R24,Temsirolimus,125208
+treated,compound-003,17,Q31,Carfilzomib,125211
+treated,compound-003,46,Q30,tegaserod,125478
+treated,compound-004,38,J21,Trovafloxacin,126381
+treated,compound-004,18,R11,Pemetrexed,126613
+treated,compound-003,48,AA11,ginsenoside-rg3,127230
+treated,compound-003,3,S09,Cabazitaxel,128333
+treated,compound-003,45,U34,quinagolide,129098
+treated,compound-003,43,AB11,MLN9708,131847
+treated,compound-003,47,I17,mirodenafil,132205
+treated,compound-003,8,G35,Fenofibrate,132725
+treated,compound-003,43,W20,CEP-18770,134708
+treated,compound-004,18,W10,Flavopiridol,134762
+treated,compound-003,46,W04,doxepin,135185
+treated,compound-003,8,R33,Curcumin,135376
+treated,compound-003,46,H38,Topotecan,136101
+treated,compound-004,31,N29,Felodipine,136210
+treated,compound-004,18,X17,LY2228820,137257
+treated,compound-004,42,R41,Gemcitabine hydrochloride,138004
+treated,compound-004,43,P05,Lumiracoxib,138509
+treated,compound-004,41,P14,Tacrolimus,139621
+treated,compound-003,22,U39,Cetylpyridinium,139809
+treated,compound-003,8,S36,Temozolomide,139865
+treated,compound-003,44,J18,MLN9708,140218
+treated,compound-004,31,W41,MLN9708,141455
+treated,compound-003,32,V17,MLN9708,143098
+treated,compound-004,20,P39,Cinacalcet,144360
+treated,compound-003,44,J06,YK-4-279,145096
+treated,compound-003,45,E44,Podophyllotoxin,145228
+treated,compound-004,41,V38,Tacrolimus,145794
+treated,compound-003,7,V37,pantoprazole,146131
+treated,compound-003,7,K03,MLN2238,150789
+treated,compound-003,13,U25,Trametinib,152165
+treated,compound-004,37,O32,Palbociclib,152878
+treated,compound-003,8,P31,Atropine,154676
+treated,compound-004,45,O15,Esomeprazole,155898
+treated,compound-004,23,O16,OSI-906,155933
+treated,compound-003,46,D39,ajmaline,157081
+treated,compound-003,46,N28,pivmecillinam,157303
+treated,compound-003,48,M37,fosfomycin,158285
+treated,compound-003,44,Q16,faropenem-medoxomil,158708
+control,compound-003,45,Z40,EMPTY_control,107702
+control,compound-003,8,O23,EMPTY_control,147780
