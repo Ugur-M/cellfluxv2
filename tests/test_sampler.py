@@ -212,6 +212,16 @@ def test_sampler_constant_velocity():
     torch.testing.assert_close(out, torch.ones(2, 169, 8))
 
 
+def test_sampler_num_steps_one_constant_velocity():
+    """Smallest valid case: one Euler step with dt=1, v=1, x0=0 → x1 = 1."""
+    model = _ConstVelocityModel(value=1.0)
+    sampler = EulerSampler(model, num_steps=1, guidance_alpha=1.0)
+    x0 = torch.zeros(2, 169, 8)
+    cond = torch.randn(2, 1024)
+    out = sampler.sample(x0, cond)
+    torch.testing.assert_close(out, torch.ones(2, 169, 8))
+
+
 # ============================================================================
 # D. Zero velocity model
 # ============================================================================
