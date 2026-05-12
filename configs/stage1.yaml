@@ -48,3 +48,12 @@ data:
   missing_addresses_path: data/missing_addresses.csv
   rng_seed: 0
   plate_cache_max_plates: 8
+
+wandb:
+  enabled: true
+  project: cellfluxv2-stage1
+  entity: null      # use the default entity for the logged-in API key
+  run_name: null    # null -> wandb auto-generates a name
+  mode: online      # online | offline | disabled
+  tags: [stage1, noisy_path]
+  notes: null

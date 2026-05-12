@@ -65,6 +65,7 @@ from ..train.diagnostics import diagnostic_suite
 from ..train.loop import train_step
 from ..utils.logging import append_jsonl, format_metrics
 from ..utils.seed import seed_everything
+from ..utils.wandb_run import WandbRun, flatten_for_wandb
 
 
 # ---------- config dataclass ------------------------------------------------
@@ -79,6 +80,7 @@ class Stage1Config:
     model: dict[str, Any]
     training: dict[str, Any]
     data: dict[str, Any]
+    wandb: dict[str, Any]
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "Stage1Config":
@@ -95,6 +97,7 @@ class Stage1Config:
             model=dict(raw["model"]),
             training=dict(raw["training"]),
             data=dict(raw["data"]),
+            wandb=dict(raw.get("wandb") or {}),
         )
 
     def to_serializable(self) -> dict[str, Any]:
@@ -104,6 +107,7 @@ class Stage1Config:
             "model": dict(self.model),
             "training": dict(self.training),
             "data": dict(self.data),
+            "wandb": dict(self.wandb),
         }
 
 
@@ -130,6 +134,14 @@ def apply_overrides(cfg: Stage1Config, overrides: dict[str, Any]) -> Stage1Confi
         cfg.training["device"] = str(overrides["device"])
     if overrides.get("output_dir") is not None:
         cfg.training["output_dir"] = str(overrides["output_dir"])
+    if overrides.get("wandb_disabled") is True:
+        cfg.wandb["enabled"] = False
+    if overrides.get("wandb_project") is not None:
+        cfg.wandb["project"] = str(overrides["wandb_project"])
+    if overrides.get("wandb_run_name") is not None:
+        cfg.wandb["run_name"] = str(overrides["wandb_run_name"])
+    if overrides.get("wandb_mode") is not None:
+        cfg.wandb["mode"] = str(overrides["wandb_mode"])
     return cfg
 
 
@@ -278,6 +290,12 @@ def run_training(
     config_dump = output_dir / "config.json"
     config_dump.write_text(json.dumps(cfg.to_serializable(), indent=2, sort_keys=True))
 
+    wandb_run = WandbRun(
+        cfg.wandb, config=cfg.to_serializable(), output_dir=output_dir
+    )
+    if wandb_run.active:
+        wandb_run.save(config_dump)
+
     max_steps = int(cfg.training["max_steps"])
     log_interval = int(cfg.training["log_interval"])
     diag_interval = int(cfg.training["diagnostic_interval"])
@@ -335,6 +353,7 @@ def run_training(
                 record["diagnostics"] = diag
 
             append_jsonl(train_jsonl, record)
+            wandb_run.log(flatten_for_wandb(record), step=step)
 
             if log_interval > 0 and (step % log_interval == 0 or step == max_steps - 1):
                 msg = format_metrics(
@@ -383,6 +402,19 @@ def run_training(
         f"first_loss={losses[0]:.4f} last_loss={losses[-1]:.4f}",
         flush=True,
     )
+    if wandb_run.active:
+        wandb_run.log(
+            {
+                "summary/first_loss": float(losses[0]) if losses else 0.0,
+                "summary/last_loss": float(losses[-1]) if losses else 0.0,
+                "summary/elapsed_sec": float(elapsed),
+                "summary/samples_seen": int(samples_seen),
+            },
+            step=step,
+        )
+        wandb_run.save(final)
+    wandb_run.finish()
+
     return {
         "step": step,
         "epoch": epoch,
@@ -414,6 +446,19 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=None,
         help="Where train.jsonl + checkpoints go (default: runs/stage1).",
     )
+    p.add_argument(
+        "--no-wandb",
+        action="store_true",
+        help="Disable W&B logging even if enabled in the YAML.",
+    )
+    p.add_argument("--wandb-project", type=str, default=None)
+    p.add_argument("--wandb-run-name", type=str, default=None)
+    p.add_argument(
+        "--wandb-mode",
+        type=str,
+        default=None,
+        choices=["online", "offline", "disabled"],
+    )
     return p.parse_args(argv)
 
 
@@ -428,6 +473,10 @@ def main(argv: Optional[list[str]] = None) -> dict[str, Any]:
             "num_workers": args.num_workers,
             "device": args.device,
             "output_dir": args.output_dir,
+            "wandb_disabled": args.no_wandb,
+            "wandb_project": args.wandb_project,
+            "wandb_run_name": args.wandb_run_name,
+            "wandb_mode": args.wandb_mode,
         },
     )
     output_dir = Path(cfg.training.get("output_dir") or "runs/stage1")

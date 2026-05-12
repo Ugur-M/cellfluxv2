@@ -63,6 +63,8 @@ def _build_smoke_config() -> Stage1Config:
     cfg.training["diagnostic_interval"] = 2
     cfg.training["checkpoint_interval"] = 2
     cfg.training["device"] = "cpu" if not torch.cuda.is_available() else "cuda"
+    # Smoke must not create a real wandb run.
+    cfg.wandb["enabled"] = False
     return cfg
 
 

@@ -86,3 +86,16 @@ so run that command from ``/teamspace/studios/this_studio/`` with
 ``cellfluxv2_repro/src`` on ``PYTHONPATH`` (or in editable-install
 mode). ``runs/`` is gitignored; checkpoints, ``train.jsonl``, and
 ``config.json`` will land in ``runs/stage1_gpu_smoke/``.
+
+W&B is wired through the optional ``wandb:`` block in
+``configs/stage1.yaml`` (project ``cellfluxv2-stage1`` by default). The
+JSONL sink is always authoritative; wandb is a parallel sink that
+degrades to a no-op on import / login / network failures. Toggle from
+the CLI:
+
+```
+--no-wandb                  # force-disable for this run
+--wandb-project NAME
+--wandb-run-name NAME
+--wandb-mode {online,offline,disabled}
+```
