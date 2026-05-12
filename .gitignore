@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE / editor
+.vscode/
+.idea/
+.DS_Store
+
+# Training outputs
+runs/
+checkpoints/
+*.ckpt
+
+# Logs
+*.log
+*.jsonl
+
+# Large local mounts (never commit GCS-mounted data)
+local_latents/
