@@ -1,0 +1,69 @@
+# Stage 2 (same-plate control latent -> treated latent) defaults.
+#
+# Real-data Stage 2 smoke on the RTX PRO 6000 Blackwell, warm-started
+# from the balanced Stage 1 final checkpoint:
+#
+#   python -m cellfluxv2.train.stage2 \
+#     --config configs/stage2.yaml \
+#     --device cuda \
+#     --batch-size 128 \
+#     --num-workers 4 \
+#     --max-steps 2000 \
+#     --init-ckpt runs/stage1_cond_balance_1k/final.pt \
+#     --output-dir runs/stage2_gpu_smoke_from_balanced_stage1
+#
+# Stage 2 is the first regime where drug conditioning has a strong
+# learning signal: the only systematic difference between same-plate
+# control and treated cells is the drug. Starting from an unbalanced
+# Stage 1 checkpoint is forbidden — see the Fix-1 / cond-balance memo.
+
+seed: 0
+stage: 2
+
+model:
+  hidden_dim: 384
+  depth: 6
+  num_heads: 6
+  dropout: 0.0
+  balance_conditioning: true
+  time_scale: 1.0
+  condition_scale: 1.0
+
+training:
+  batch_size: 128
+  lr: 1.0e-4
+  weight_decay: 0.01
+  grad_clip_norm: 1.0
+  path_type: noisy
+  path_sigma: 1.0
+  source_noise_p: 0.1
+  source_noise_sigma: 1.0
+  cond_dropout_p: 0.1
+  max_steps: 2000
+  log_interval: 20
+  diagnostic_interval: 200
+  checkpoint_interval: 500
+  num_workers: 4
+  device: cuda
+  # Optional path to a model-only initialization checkpoint. When set
+  # (typically a Stage 1 final.pt), the trainer loads model weights but
+  # NOT optimizer state, so AdamW starts fresh for the Stage 2 objective.
+  init_ckpt: null
+
+data:
+  metadata_path: /teamspace/studios/this_studio/2DGen/data/rxrx3_core/metadata_rxrx3_core_normalized.csv
+  latent_root: /teamspace/gcs_connections/sentinal4d/imaging/2d/single_cell/rxrx/rxrx3-core/features/rxrx3_core_mae_latents
+  fingerprints_path: /teamspace/studios/this_studio/cellfluxv2_repro/data/fingerprints_morgan_r2_b1024.npz
+  norm_stats_path: /teamspace/studios/this_studio/2DGen/data/rxrx3_core/norm_stats_controls.pt
+  missing_addresses_path: /teamspace/studios/this_studio/cellfluxv2_repro/data/missing_addresses.csv
+  rng_seed: 1337
+  plate_cache_max_plates: 8
+
+wandb:
+  enabled: true
+  project: cellfluxv2-stage2
+  entity: null      # use the default entity for the logged-in API key
+  run_name: null    # null -> wandb auto-generates a name
+  mode: online      # online | offline | disabled
+  tags: [stage2, noisy_path, balanced_cond]
+  notes: null
