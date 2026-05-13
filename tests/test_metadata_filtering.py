@@ -152,6 +152,57 @@ def test_filter_preserves_metadata_idx(tmp_path):
     assert list(filtered.treated["metadata_idx"].astype(int)) == [0, 2, 3, 4]
 
 
+def test_filter_split_uses_metadata_idx_as_explicit_index(tmp_path):
+    """Regression guard: the filtered split must have ``metadata_idx`` as
+    its explicit DataFrame index (not via the RangeIndex-equals-metadata_idx
+    coincidence). Covers four invariants downstream code relies on:
+
+    1. ``metadata_idx`` is still present as a column.
+    2. ``split.control.loc[m_idx]["metadata_idx"] == m_idx``.
+    3. ``split.treated.loc[m_idx]["metadata_idx"] == m_idx`` for a
+       surviving treated row.
+    4. ``.iloc`` positional access still works — row order is unchanged
+       by the index promotion.
+    """
+    split = _make_split()
+    csv_path = _write_missing_csv(
+        tmp_path / "missing.csv",
+        [
+            {"role": "treated", "experiment": "A", "plate": 1, "address": "W02",
+             "treatment": "drugB", "metadata_idx": 1},
+        ],
+    )
+    filtered, _ = filter_split_by_missing_addresses(split, csv_path)
+
+    # (1) metadata_idx column survives the index promotion.
+    assert "metadata_idx" in filtered.treated.columns
+    assert "metadata_idx" in filtered.control.columns
+
+    # (2) .loc on a control metadata_idx returns the row whose
+    #     metadata_idx column equals the looked-up label.
+    for ctrl_m_idx in [5, 6, 7]:  # all 3 control rows survive
+        row = filtered.control.loc[ctrl_m_idx]
+        assert int(row["metadata_idx"]) == ctrl_m_idx
+
+    # (3) Same invariant for the surviving treated rows (idx 1 was
+    #     dropped, so 0/2/3/4 remain).
+    for t_m_idx in [0, 2, 3, 4]:
+        row = filtered.treated.loc[t_m_idx]
+        assert int(row["metadata_idx"]) == t_m_idx
+
+    # (4) Positional .iloc access matches the surviving row order — row 0
+    #     is still the first surviving treated row, etc.
+    surviving_order = [0, 2, 3, 4]
+    for pos, expected_m_idx in enumerate(surviving_order):
+        row = filtered.treated.iloc[pos]
+        assert int(row["metadata_idx"]) == expected_m_idx
+
+    # Bonus invariant: the index name is cleared so it does not collide
+    # with the same-named column, which would break a stray reset_index.
+    assert filtered.treated.index.name is None
+    assert filtered.control.index.name is None
+
+
 def test_filter_recomputes_smiles_vocab(tmp_path):
     """Dropping drugB rows must remove 'CCC' from the vocab."""
     split = _make_split()

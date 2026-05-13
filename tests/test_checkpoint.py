@@ -7,6 +7,7 @@ import pytest
 import torch
 import torch.nn as nn
 
+from cellfluxv2.models.dit import DiTVelocity
 from cellfluxv2.train.checkpoint import load_checkpoint, save_checkpoint
 
 
@@ -17,6 +18,23 @@ class _TinyModel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.lin(x)
+
+
+def _tiny_dit(hidden_dim: int = 64, depth: int = 2, num_heads: int = 4) -> DiTVelocity:
+    """Tiny DiTVelocity for the wrong-shape load test.
+
+    Inline factory (not imported from another test file) so this module
+    stays self-contained.
+    """
+    return DiTVelocity(
+        hidden_dim=hidden_dim,
+        depth=depth,
+        num_heads=num_heads,
+        dropout=0.0,
+        balance_conditioning=True,
+        time_scale=1.0,
+        condition_scale=1.0,
+    )
 
 
 # ---------- save ------------------------------------------------------------
@@ -185,6 +203,26 @@ def test_load_checkpoint_non_dict_raises(tmp_path: Path):
     fresh = _TinyModel()
     with pytest.raises(ValueError, match="must be a dict"):
         load_checkpoint(path, model=fresh)
+
+
+def test_load_checkpoint_wrong_shape_raises(tmp_path: Path):
+    """A checkpoint saved from one model architecture must not silently
+    load into a model with different layer shapes — ``load_state_dict``
+    is ``strict=True`` so PyTorch raises ``RuntimeError`` on the mismatch.
+
+    The Stage 2 warm-start path (``_maybe_load_init_ckpt``) relies on
+    this for catching shape drift between a Stage 1 checkpoint and a
+    Stage 2 model. ``RuntimeError`` from PyTorch is the standard idiom;
+    we deliberately do not wrap it in ``ValueError``.
+    """
+    saved = _tiny_dit(hidden_dim=64, depth=2, num_heads=4)
+    path = tmp_path / "ckpt.pt"
+    save_checkpoint(path, model=saved, step=0, epoch=0)
+
+    # Different hidden_dim ⇒ every weight tensor has a different shape.
+    mismatched = _tiny_dit(hidden_dim=128, depth=2, num_heads=4)
+    with pytest.raises(RuntimeError, match=r"size mismatch|shape"):
+        load_checkpoint(path, model=mismatched)
 
 
 # ---------- forward equivalence after load ---------------------------------
