@@ -5,9 +5,12 @@
 by a 2-layer SiLU MLP.
 
 ``ConditionEmbed`` projects a Morgan fingerprint (or any fixed-width
-chemistry vector) to ``(B, out_dim)`` via a 2-layer SiLU MLP. The
-final layer is initialized with small ``std=0.02`` so the model starts
-near identity but gradients still flow on the first backward.
+chemistry vector) to ``(B, out_dim)`` via a 2-layer SiLU MLP. Both
+layers use the PyTorch default (Kaiming-uniform) initialization — the
+near-zero initial output of the velocity model is delivered by the
+zero-init adaLN-Zero gates in ``DiTBlock``, not by shrinking the
+condition embedding to a tiny magnitude before it ever enters the
+network.
 """
 from __future__ import annotations
 
@@ -130,11 +133,6 @@ class ConditionEmbed(nn.Module):
         self.fc1 = nn.Linear(in_dim, hidden_dim)
         self.act = nn.SiLU()
         self.fc2 = nn.Linear(hidden_dim, out_dim)
-        # Small std on the final layer: keeps initial conditioning near
-        # zero so the model starts well-behaved, but non-zero so gradients
-        # flow on the first backward pass.
-        nn.init.normal_(self.fc2.weight, std=0.02)
-        nn.init.zeros_(self.fc2.bias)
 
     def forward(self, condition: torch.Tensor) -> torch.Tensor:
         if not isinstance(condition, torch.Tensor):

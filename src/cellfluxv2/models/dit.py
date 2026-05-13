@@ -10,8 +10,10 @@ Architecture (small, paper-faithful, no MMDiT / no cross-attention):
   - Learned positional embedding ``(1, 169, hidden)``, small std init.
   - Sinusoidal ``t`` embedding -> MLP -> ``hidden``.
   - Morgan FP ``(B, 1024)`` -> MLP -> ``hidden``.
+  - Optional non-learnable RMSNorm on each side, then a unit-RMS
+    weighted sum into the adaLN conditioning vector ``c``.
   - ``depth`` DiT blocks: self-attention over 169 tokens + MLP,
-    both adaLN-Zero conditioned on ``time_emb + cond_emb``.
+    both adaLN-Zero conditioned on ``c``.
   - Final ``LayerNorm`` + adaLN + ``Linear(hidden -> 8)`` projection.
 
 Block-level adaLN modulation is zero-initialized so each block starts
@@ -20,6 +22,8 @@ the model initial output is near zero **and** gradients still flow
 through every learnable parameter on the first backward.
 """
 from __future__ import annotations
+
+import math
 
 import torch
 import torch.nn as nn
@@ -119,6 +123,9 @@ class DiTVelocity(nn.Module):
         num_heads: int = 6,
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
+        balance_conditioning: bool = True,
+        time_scale: float = 1.0,
+        condition_scale: float = 1.0,
     ):
         super().__init__()
         if hidden_dim % num_heads != 0:
@@ -132,6 +139,28 @@ class DiTVelocity(nn.Module):
                 f"latent_tokens={latent_tokens}, latent_dim={latent_dim}, "
                 f"condition_dim={condition_dim} must all be positive"
             )
+        if not isinstance(balance_conditioning, bool):
+            raise ValueError(
+                f"balance_conditioning must be bool; got {type(balance_conditioning).__name__}"
+            )
+        if not isinstance(time_scale, (int, float)) or isinstance(time_scale, bool):
+            raise ValueError(
+                f"time_scale must be a number; got {type(time_scale).__name__}"
+            )
+        if not isinstance(condition_scale, (int, float)) or isinstance(
+            condition_scale, bool
+        ):
+            raise ValueError(
+                f"condition_scale must be a number; got {type(condition_scale).__name__}"
+            )
+        time_scale = float(time_scale)
+        condition_scale = float(condition_scale)
+        if time_scale < 0:
+            raise ValueError(f"time_scale must be >= 0; got {time_scale}")
+        if condition_scale < 0:
+            raise ValueError(f"condition_scale must be >= 0; got {condition_scale}")
+        if time_scale == 0 and condition_scale == 0:
+            raise ValueError("time_scale and condition_scale cannot both be zero")
 
         self.latent_tokens = int(latent_tokens)
         self.latent_dim = int(latent_dim)
@@ -139,6 +168,9 @@ class DiTVelocity(nn.Module):
         self.hidden_dim = int(hidden_dim)
         self.depth = int(depth)
         self.num_heads = int(num_heads)
+        self.balance_conditioning = bool(balance_conditioning)
+        self.time_scale = time_scale
+        self.condition_scale = condition_scale
 
         # Token + positional embedding
         self.x_embed = nn.Linear(latent_dim, hidden_dim)
@@ -153,6 +185,13 @@ class DiTVelocity(nn.Module):
             hidden_dim=cond_inner,
             out_dim=hidden_dim,
         )
+
+        # Non-learnable RMSNorms used to balance the time and condition
+        # signals before they enter adaLN. ``elementwise_affine=False`` is
+        # deliberate: a learnable gamma would let the model re-introduce
+        # the magnitude imbalance these norms exist to remove.
+        self.time_norm = nn.RMSNorm(hidden_dim, elementwise_affine=False)
+        self.cond_norm = nn.RMSNorm(hidden_dim, elementwise_affine=False)
 
         # Transformer blocks
         self.blocks = nn.ModuleList(
@@ -256,6 +295,66 @@ class DiTVelocity(nn.Module):
             )
         return t
 
+    # ---- conditioning ------------------------------------------------------
+
+    def _combine_conditioning(
+        self, time_raw: torch.Tensor, cond_raw: torch.Tensor
+    ) -> dict[str, torch.Tensor]:
+        """Apply optional RMSNorm balancing + scaled mix to time/cond.
+
+        Single source of truth for the adaLN conditioning vector. The
+        ``forward`` and ``get_conditioning_embeddings`` paths both call
+        this so they cannot drift.
+        """
+        if self.balance_conditioning:
+            time_used = self.time_norm(time_raw)
+            cond_used = self.cond_norm(cond_raw)
+            denom = math.sqrt(self.time_scale ** 2 + self.condition_scale ** 2)
+            combined = (
+                self.time_scale * time_used + self.condition_scale * cond_used
+            ) / denom
+        else:
+            time_used = time_raw
+            cond_used = cond_raw
+            combined = self.time_scale * time_used + self.condition_scale * cond_used
+        return {
+            "time_raw": time_raw,
+            "condition_raw": cond_raw,
+            "time_used": time_used,
+            "condition_used": cond_used,
+            "combined": combined,
+        }
+
+    def get_conditioning_embeddings(
+        self, t, condition: torch.Tensor
+    ) -> dict[str, torch.Tensor]:
+        """Return time/condition embedding tensors used to drive adaLN.
+
+        Keys:
+            ``time_raw``        : ``time_embed(t)``                shape ``(B, hidden_dim)``
+            ``condition_raw``   : ``cond_embed(condition)``        shape ``(B, hidden_dim)``
+            ``time_used``       : after optional RMSNorm            shape ``(B, hidden_dim)``
+            ``condition_used``  : after optional RMSNorm            shape ``(B, hidden_dim)``
+            ``combined``        : weighted sum fed to adaLN         shape ``(B, hidden_dim)``
+
+        Used by ``cellfluxv2.train.diagnostics.embedding_rms``.
+        """
+        if not isinstance(condition, torch.Tensor):
+            raise ValueError(
+                f"condition must be a Tensor; got {type(condition).__name__}"
+            )
+        if condition.ndim != 2:
+            raise ValueError(
+                f"condition must be 2-d (B, {self.condition_dim}); "
+                f"got shape {tuple(condition.shape)}"
+            )
+        B = int(condition.shape[0])
+        self._validate_condition(condition, B)
+        t = self._expand_t(t, B, condition)
+        time_raw = self.time_embed(t)
+        cond_raw = self.cond_embed(condition)
+        return self._combine_conditioning(time_raw, cond_raw)
+
     # ---- forward -----------------------------------------------------------
 
     def forward(
@@ -268,8 +367,10 @@ class DiTVelocity(nn.Module):
         # Token + positional
         h = self.x_embed(x) + self.pos_embed  # (B, 169, hidden_dim)
 
-        # Conditioning vector
-        c = self.time_embed(t) + self.cond_embed(condition)  # (B, hidden_dim)
+        # Conditioning vector (balanced if configured).
+        time_raw = self.time_embed(t)
+        cond_raw = self.cond_embed(condition)
+        c = self._combine_conditioning(time_raw, cond_raw)["combined"]
 
         # Transformer blocks
         for block in self.blocks:

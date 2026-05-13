@@ -59,6 +59,7 @@ from ..data.metadata import (
 )
 from ..data.pair_index import PairIndex
 from ..data.plate_cache import PlateCache
+from ..data.plate_sampler import PlateGroupedSampler
 from ..models.dit import DiTVelocity
 from ..train.checkpoint import save_checkpoint
 from ..train.diagnostics import diagnostic_suite
@@ -202,6 +203,9 @@ def build_model(cfg: Stage1Config) -> DiTVelocity:
         depth=int(m["depth"]),
         num_heads=int(m["num_heads"]),
         dropout=float(m.get("dropout", 0.0)),
+        balance_conditioning=bool(m.get("balance_conditioning", True)),
+        time_scale=float(m.get("time_scale", 1.0)),
+        condition_scale=float(m.get("condition_scale", 1.0)),
     )
 
 
@@ -216,14 +220,24 @@ def build_optimizer(model: DiTVelocity, cfg: Stage1Config) -> torch.optim.Optimi
 def build_dataloader(
     dataset: CellFluxDataset, cfg: Stage1Config
 ) -> DataLoader:
+    num_workers = int(cfg.training["num_workers"])
+    device = str(cfg.training.get("device", "cpu"))
+    treated = dataset.split.treated
+    plate_keys = list(zip(treated["experiment_name"].tolist(), treated["plate"].tolist()))
+    plate_to_positions: dict = {}
+    for pos, key in enumerate(plate_keys):
+        plate_to_positions.setdefault(key, []).append(pos)
+    sampler = PlateGroupedSampler(plate_to_positions, seed=int(cfg.data.get("rng_seed", 0)))
     return DataLoader(
         dataset,
         batch_size=int(cfg.training["batch_size"]),
-        shuffle=True,
-        num_workers=int(cfg.training["num_workers"]),
+        sampler=sampler,
+        num_workers=num_workers,
         collate_fn=CellFluxDataset.collate,
         drop_last=True,
-        pin_memory=False,
+        pin_memory=device.startswith("cuda"),
+        persistent_workers=num_workers > 0,
+        prefetch_factor=4 if num_workers > 0 else None,
     )
 
 

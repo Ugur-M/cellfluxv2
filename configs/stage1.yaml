@@ -22,6 +22,9 @@ model:
   depth: 6
   num_heads: 6
   dropout: 0.0
+  balance_conditioning: true
+  time_scale: 1.0
+  condition_scale: 1.0
 
 training:
   batch_size: 128
@@ -41,11 +44,11 @@ training:
   device: cuda
 
 data:
-  metadata_path: 2DGen/data/rxrx3_core/metadata_rxrx3_core_normalized.csv
+  metadata_path: /teamspace/studios/this_studio/2DGen/data/rxrx3_core/metadata_rxrx3_core_normalized.csv
   latent_root: /teamspace/gcs_connections/sentinal4d/imaging/2d/single_cell/rxrx/rxrx3-core/features/rxrx3_core_mae_latents
-  fingerprints_path: data/fingerprints_morgan_r2_b1024.npz
-  norm_stats_path: 2DGen/data/rxrx3_core/norm_stats_controls.pt
-  missing_addresses_path: data/missing_addresses.csv
+  fingerprints_path: /teamspace/studios/this_studio/cellfluxv2_repro/data/fingerprints_morgan_r2_b1024.npz
+  norm_stats_path: /teamspace/studios/this_studio/2DGen/data/rxrx3_core/norm_stats_controls.pt
+  missing_addresses_path: /teamspace/studios/this_studio/cellfluxv2_repro/data/missing_addresses.csv
   rng_seed: 0
   plate_cache_max_plates: 8
 
