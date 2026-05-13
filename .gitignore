@@ -18,13 +18,16 @@ env/
 .DS_Store
 
 # Training outputs
-runs/
+runs/**/*.pt
+runs/**/wandb/
 checkpoints/
 *.ckpt
 
-# Logs
+# Logs (allow run logs / metrics under runs/)
 *.log
 *.jsonl
+!runs/**/*.log
+!runs/**/*.jsonl
 
 # Large local mounts (never commit GCS-mounted data)
 local_latents/

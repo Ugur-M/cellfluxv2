@@ -130,12 +130,32 @@ def test_cond_embed_integer_input_raises():
         m(torch.zeros(4, 1024, dtype=torch.int64))
 
 
-def test_cond_embed_final_layer_small_std():
-    """Per spec, fc2 should be initialized with small std (~0.02)."""
+def test_cond_embed_default_init_is_not_forced_small():
+    """Post-fix: fc2 uses default Kaiming init, not the legacy std=0.02 path.
+
+    The near-zero initial model output is delivered by zero-init adaLN-Zero
+    gates in ``DiTBlock``, not by shrinking the condition embedding before
+    it ever reaches the network. A forced-tiny fc2 starves the cond pathway
+    relative to the time pathway (see cellfluxv2_repro Stage-1 cond-collapse
+    diagnosis).
+    """
     torch.manual_seed(0)
     m = ConditionEmbed(in_dim=64, hidden_dim=32, out_dim=16)
-    assert m.fc2.weight.std().item() < 0.1
-    assert torch.all(m.fc2.bias == 0)
+    # Default Kaiming-uniform on fc2 (fan_in=32) has bound = 1/sqrt(32) ≈ 0.177,
+    # so weight std ≈ 0.102 — well above the legacy 0.02. Use a loose floor
+    # to stay robust to seed.
+    assert m.fc2.weight.std().item() > 0.05, (
+        "ConditionEmbed.fc2 weight std looks like the legacy small-init path"
+    )
+
+
+def test_cond_embed_output_finite_and_shape():
+    """Output is finite and has the expected ``(B, out_dim)`` shape."""
+    torch.manual_seed(0)
+    m = ConditionEmbed(in_dim=1024, hidden_dim=512, out_dim=384)
+    out = m(torch.rand(4, 1024))
+    assert out.shape == (4, 384)
+    assert torch.isfinite(out).all()
 
 
 # ============================================================================
@@ -372,3 +392,114 @@ def test_modulate_zero_shift_zero_scale_is_identity():
     scale = torch.zeros(2, 8)
     out = modulate(x, shift, scale)
     torch.testing.assert_close(out, x)
+
+
+# ============================================================================
+# G. Conditioning balance (balance_conditioning / time_scale / condition_scale)
+# ============================================================================
+
+def _tiny_dit(**kw) -> DiTVelocity:
+    kw.setdefault("hidden_dim", 64)
+    kw.setdefault("depth", 2)
+    kw.setdefault("num_heads", 4)
+    return DiTVelocity(**kw)
+
+
+def test_dit_balance_true_forward_ok():
+    model = _tiny_dit(balance_conditioning=True)
+    v = model(_make_x(B=4), torch.rand(4), _make_cond(B=4))
+    assert v.shape == (4, 169, 8)
+    assert torch.isfinite(v).all()
+
+
+def test_dit_balance_false_forward_ok():
+    model = _tiny_dit(balance_conditioning=False)
+    v = model(_make_x(B=4), torch.rand(4), _make_cond(B=4))
+    assert v.shape == (4, 169, 8)
+    assert torch.isfinite(v).all()
+
+
+def test_dit_invalid_time_scale_raises():
+    with pytest.raises(ValueError, match="time_scale"):
+        _tiny_dit(time_scale=-0.5)
+    with pytest.raises(ValueError, match="time_scale"):
+        _tiny_dit(time_scale="not-a-number")  # type: ignore[arg-type]
+
+
+def test_dit_invalid_condition_scale_raises():
+    with pytest.raises(ValueError, match="condition_scale"):
+        _tiny_dit(condition_scale=-1.0)
+    with pytest.raises(ValueError, match="condition_scale"):
+        _tiny_dit(condition_scale=True)  # type: ignore[arg-type]
+
+
+def test_dit_both_scales_zero_raises():
+    with pytest.raises(ValueError, match="both be zero"):
+        _tiny_dit(time_scale=0.0, condition_scale=0.0)
+
+
+def test_dit_invalid_balance_conditioning_type_raises():
+    with pytest.raises(ValueError, match="balance_conditioning"):
+        _tiny_dit(balance_conditioning="yes")  # type: ignore[arg-type]
+
+
+def test_dit_get_conditioning_embeddings_keys_and_shapes():
+    model = _tiny_dit(balance_conditioning=True)
+    B = 4
+    cond = _make_cond(B=B)
+    out = model.get_conditioning_embeddings(torch.rand(B), cond)
+    expected = {"time_raw", "condition_raw", "time_used", "condition_used", "combined"}
+    assert set(out.keys()) == expected
+    H = model.hidden_dim
+    for k, v in out.items():
+        assert v.shape == (B, H), f"{k} shape {tuple(v.shape)} != ({B}, {H})"
+        assert torch.isfinite(v).all(), f"{k} non-finite"
+
+
+def test_dit_balance_true_produces_unit_rms_used_signals():
+    """With ``balance_conditioning=True``, RMSNorm should produce ~unit RMS
+    on both ``time_used`` and ``condition_used``, and the unit-RMS weighted
+    sum should land near 1 (orthogonal limit) and at most a small factor
+    above 1 (aligned limit).
+    """
+    torch.manual_seed(0)
+    model = _tiny_dit(balance_conditioning=True)
+    B = 16
+    out = model.get_conditioning_embeddings(torch.rand(B), _make_cond(B=B, seed=2))
+    # RMSNorm normalizes the last-dim RMS to 1 per-sample, so the
+    # tensor-wide RMS is 1 too.
+    t_used_rms = out["time_used"].pow(2).mean().sqrt().item()
+    c_used_rms = out["condition_used"].pow(2).mean().sqrt().item()
+    assert t_used_rms == pytest.approx(1.0, abs=1e-3)
+    assert c_used_rms == pytest.approx(1.0, abs=1e-3)
+    combined_rms = out["combined"].pow(2).mean().sqrt().item()
+    assert torch.isfinite(torch.tensor(combined_rms))
+    # In the orthogonal case it's ~1; in the perfectly-aligned case it's
+    # ~sqrt(2). Always within (0, ~1.5].
+    assert 0.0 < combined_rms <= 1.5 + 1e-3
+
+
+def test_dit_balance_false_used_equals_raw():
+    model = _tiny_dit(balance_conditioning=False)
+    B = 4
+    out = model.get_conditioning_embeddings(torch.rand(B), _make_cond(B=B))
+    torch.testing.assert_close(out["time_used"], out["time_raw"])
+    torch.testing.assert_close(out["condition_used"], out["condition_raw"])
+
+
+def test_dit_get_conditioning_embeddings_matches_forward():
+    """The combined vector returned here MUST be the exact tensor fed to
+    adaLN in ``forward`` — i.e., the two paths share one combine routine.
+    """
+    torch.manual_seed(0)
+    model = _tiny_dit(balance_conditioning=True).eval()
+    B = 3
+    t = torch.tensor([0.1, 0.4, 0.9])
+    cond = _make_cond(B=B, seed=11)
+    with torch.no_grad():
+        bundle = model.get_conditioning_embeddings(t, cond)
+        # Reconstruct what forward would feed into the first block.
+        time_raw = model.time_embed(t)
+        cond_raw = model.cond_embed(cond)
+        forward_combined = model._combine_conditioning(time_raw, cond_raw)["combined"]
+    torch.testing.assert_close(bundle["combined"], forward_combined)

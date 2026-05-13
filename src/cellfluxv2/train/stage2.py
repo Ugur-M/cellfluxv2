@@ -1,8 +1,8 @@
-"""Stage-1 training entry-point: Gaussian noise -> normalized treated latent.
+"""Stage-2 training entry-point: same-plate control latent -> normalized treated latent.
 
 Run:
 
-    python -m cellfluxv2.train.stage1 --config configs/stage1.yaml
+    python -m cellfluxv2.train.stage2 --config configs/stage2.yaml
 
 CLI overrides:
 
@@ -11,28 +11,28 @@ CLI overrides:
     --num-workers INT
     --device STR        (e.g. "cuda", "cpu")
     --output-dir PATH
+    --init-ckpt PATH    (model-only init, optimizer NOT loaded)
 
 Behaviour:
 
 * Loads the YAML config; CLI flags override the corresponding fields.
-* Loads metadata; if ``data.missing_addresses_path`` is set, drops rows
-  via :func:`filter_split_by_missing_addresses` before building the
-  dataset. The path must exist when set; missing-but-set raises
-  ``FileNotFoundError``. The dataset itself stays strict.
-* Stage 1 doesn't read control rows, so we don't run
-  :func:`build_pair_index` here (it would fail loudly on any plate that
-  lost all its controls after filtering, even though Stage 1 wouldn't
-  use those controls). An empty ``PairIndex`` is passed to the dataset
-  constructor — it'd only be touched on a stage==2 ``__getitem__``.
-* Trains the DiT velocity model for ``training.max_steps`` train_steps,
-  calling ``dataset.set_epoch(epoch)`` at every fresh DataLoader pass
-  (this is what makes stage-1 Gaussian noise resample across epochs).
-* Writes per-step metrics to ``<output_dir>/train.jsonl``.
-* Saves a rolling ``latest.pt`` every ``checkpoint_interval`` steps,
-  and a ``final.pt`` at the end.
-* Runs the full latent-diagnostic suite on a fixed held-out batch every
-  ``diagnostic_interval`` steps; the diagnostic values are folded into
-  the matching train.jsonl record.
+* Loads metadata; applies :func:`filter_split_by_missing_addresses`
+  when ``data.missing_addresses_path`` is set. The path must exist when
+  set; missing-but-set raises ``FileNotFoundError``. The dataset itself
+  stays strict.
+* Builds a real :func:`build_pair_index` on the **filtered** split — no
+  empty-PairIndex shortcut. If any treated ``(experiment_name, plate)``
+  group lost all its controls, ``build_pair_index`` raises loudly; that
+  is intentional. There is no silent skip.
+* Builds ``CellFluxDataset(stage=2)`` so ``__getitem__`` samples the
+  source latent from the same-plate control pool via the pair index.
+* Optionally warm-starts model weights from ``init_ckpt``. Optimizer
+  state is **not** loaded; AdamW always starts fresh for the Stage 2
+  objective.
+* Same source-noise injection (``source_noise_p / source_noise_sigma``),
+  same noisy interpolant, same training loop and logging shape as
+  Stage 1, plus diagnostics on a fixed held-out batch every
+  ``diagnostic_interval`` steps.
 
 This module is import-safe — :func:`main` is only invoked from
 ``__main__``. The smoke script imports the smaller helpers directly.
@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -58,11 +59,11 @@ from ..data.metadata import (
     filter_split_by_missing_addresses,
     load_metadata,
 )
-from ..data.pair_index import PairIndex
+from ..data.pair_index import PairIndex, build_pair_index
 from ..data.plate_cache import PlateCache
 from ..data.plate_sampler import PlateGroupedSampler
 from ..models.dit import DiTVelocity
-from ..train.checkpoint import save_checkpoint
+from ..train.checkpoint import load_checkpoint, save_checkpoint
 from ..train.diagnostics import diagnostic_suite
 from ..train.loop import train_step
 from ..utils.logging import append_jsonl, format_metrics
@@ -74,8 +75,8 @@ from ..utils.wandb_run import WandbRun, flatten_for_wandb
 
 
 @dataclass
-class Stage1Config:
-    """Parsed + normalized Stage-1 config."""
+class Stage2Config:
+    """Parsed + normalized Stage-2 config."""
 
     seed: int
     stage: int
@@ -85,13 +86,13 @@ class Stage1Config:
     wandb: dict[str, Any]
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "Stage1Config":
+    def from_dict(cls, raw: dict[str, Any]) -> "Stage2Config":
         for k in ("seed", "stage", "model", "training", "data"):
             if k not in raw:
                 raise ValueError(f"config missing key {k!r}; have {sorted(raw.keys())}")
-        if int(raw["stage"]) != 1:
+        if int(raw["stage"]) != 2:
             raise ValueError(
-                f"stage1.py only supports stage=1; got stage={raw['stage']}"
+                f"stage2.py only supports stage=2; got stage={raw['stage']}"
             )
         return cls(
             seed=int(raw["seed"]),
@@ -113,18 +114,20 @@ class Stage1Config:
         }
 
 
-def load_config(path: str | Path) -> Stage1Config:
+def load_config(path: str | Path) -> Stage2Config:
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"config not found: {path}")
     with path.open() as f:
         raw = yaml.safe_load(f)
     if not isinstance(raw, dict):
-        raise ValueError(f"config at {path} must be a YAML mapping; got {type(raw).__name__}")
-    return Stage1Config.from_dict(raw)
+        raise ValueError(
+            f"config at {path} must be a YAML mapping; got {type(raw).__name__}"
+        )
+    return Stage2Config.from_dict(raw)
 
 
-def apply_overrides(cfg: Stage1Config, overrides: dict[str, Any]) -> Stage1Config:
+def apply_overrides(cfg: Stage2Config, overrides: dict[str, Any]) -> Stage2Config:
     """Merge a small set of CLI overrides into the parsed config."""
     if overrides.get("max_steps") is not None:
         cfg.training["max_steps"] = int(overrides["max_steps"])
@@ -136,6 +139,8 @@ def apply_overrides(cfg: Stage1Config, overrides: dict[str, Any]) -> Stage1Confi
         cfg.training["device"] = str(overrides["device"])
     if overrides.get("output_dir") is not None:
         cfg.training["output_dir"] = str(overrides["output_dir"])
+    if overrides.get("init_ckpt") is not None:
+        cfg.training["init_ckpt"] = str(overrides["init_ckpt"])
     if overrides.get("wandb_disabled") is True:
         cfg.wandb["enabled"] = False
     if overrides.get("wandb_project") is not None:
@@ -150,11 +155,10 @@ def apply_overrides(cfg: Stage1Config, overrides: dict[str, Any]) -> Stage1Confi
 # ---------- pipeline builders ----------------------------------------------
 
 
-def build_split(cfg: Stage1Config) -> tuple[MetadataSplit, Optional[dict[str, Any]]]:
+def build_split(cfg: Stage2Config) -> tuple[MetadataSplit, Optional[dict[str, Any]]]:
     """Load metadata; optionally drop rows via the missing-addresses CSV.
 
-    Returns ``(split, filter_report or None)``. ``filter_report`` is only
-    non-None when the CSV is actually applied.
+    Returns ``(split, filter_report or None)``.
     """
     metadata_path = Path(cfg.data["metadata_path"])
     split = load_metadata(metadata_path)
@@ -173,36 +177,39 @@ def build_split(cfg: Stage1Config) -> tuple[MetadataSplit, Optional[dict[str, An
     return filtered_split, report
 
 
-def build_dataset(
-    cfg: Stage1Config, split: MetadataSplit
-) -> CellFluxDataset:
-    """Build the CellFluxDataset(stage=1) plus its sibling caches.
+def build_pair_index_from_split(split: MetadataSplit) -> PairIndex:
+    """Build a strict same-(experiment_name, plate) pair index on the split.
 
-    Stage 1 never reads controls, so we hand the dataset an empty
-    ``PairIndex`` rather than running ``build_pair_index``; that
-    function fails loudly on any (experiment, plate) that lost all its
-    controls after filtering, which would be a false alarm for Stage 1.
+    No empty-PairIndex shortcut. If any treated group has lost all its
+    controls after missing-address filtering, ``build_pair_index`` raises
+    — Stage 2 cannot run on a group with no control source.
     """
+    return build_pair_index(split.treated, split.control)
+
+
+def build_dataset(
+    cfg: Stage2Config, split: MetadataSplit, pair_index: PairIndex
+) -> CellFluxDataset:
+    """Build the CellFluxDataset(stage=2) on the filtered split + real pair index."""
     latent_root = Path(cfg.data["latent_root"])
     plate_cache = PlateCache(
         latent_root, max_plates=int(cfg.data.get("plate_cache_max_plates", 8))
     )
     fp_cache = load_fp_cache(cfg.data["fingerprints_path"])
     mean, std = load_norm_stats(cfg.data["norm_stats_path"])
-    empty_pair_index = PairIndex(groups={}, treated_to_group={})
     return CellFluxDataset(
         metadata_split=split,
-        pair_index=empty_pair_index,
+        pair_index=pair_index,
         plate_cache=plate_cache,
         fp_cache=fp_cache,
         mean=mean,
         std=std,
-        stage=1,
-        rng_seed=int(cfg.data.get("rng_seed", 0)),
+        stage=2,
+        rng_seed=int(cfg.data.get("rng_seed", 1337)),
     )
 
 
-def build_model(cfg: Stage1Config) -> DiTVelocity:
+def build_model(cfg: Stage2Config) -> DiTVelocity:
     m = cfg.model
     # `balance_conditioning`, `time_scale`, `condition_scale` are passed
     # through raw so DiTVelocity's strict validation runs on the actual
@@ -219,7 +226,7 @@ def build_model(cfg: Stage1Config) -> DiTVelocity:
     )
 
 
-def build_optimizer(model: DiTVelocity, cfg: Stage1Config) -> torch.optim.Optimizer:
+def build_optimizer(model: DiTVelocity, cfg: Stage2Config) -> torch.optim.Optimizer:
     return torch.optim.AdamW(
         model.parameters(),
         lr=float(cfg.training["lr"]),
@@ -249,13 +256,13 @@ def _plate_to_positions(treated) -> dict:
 
 
 def build_dataloader(
-    dataset: CellFluxDataset, cfg: Stage1Config
+    dataset: CellFluxDataset, cfg: Stage2Config
 ) -> tuple[DataLoader, PlateGroupedSampler]:
     num_workers = int(cfg.training["num_workers"])
     device = str(cfg.training.get("device", "cpu"))
     plate_to_positions = _plate_to_positions(dataset.split.treated)
     sampler = PlateGroupedSampler(
-        plate_to_positions, seed=int(cfg.data.get("rng_seed", 0))
+        plate_to_positions, seed=int(cfg.data.get("rng_seed", 1337))
     )
     loader = DataLoader(
         dataset,
@@ -274,7 +281,7 @@ def build_dataloader(
 # ---------- training loop --------------------------------------------------
 
 
-def _device_str(cfg: Stage1Config) -> str:
+def _device_str(cfg: Stage2Config) -> str:
     requested = str(cfg.training.get("device", "cpu"))
     if requested.startswith("cuda") and not torch.cuda.is_available():
         raise RuntimeError(
@@ -284,7 +291,7 @@ def _device_str(cfg: Stage1Config) -> str:
 
 
 def _snapshot_diagnostic_batch(
-    dataset: CellFluxDataset, cfg: Stage1Config, batch_size: int
+    dataset: CellFluxDataset, cfg: Stage2Config, batch_size: int
 ) -> dict[str, Any]:
     """Build a deterministic diagnostic batch with a separate sampler seed.
 
@@ -297,7 +304,7 @@ def _snapshot_diagnostic_batch(
     plate_to_positions = _plate_to_positions(dataset.split.treated)
     diag_sampler = PlateGroupedSampler(
         plate_to_positions,
-        seed=int(cfg.data.get("rng_seed", 0)) + DIAG_SEED_OFFSET,
+        seed=int(cfg.data.get("rng_seed", 1337)) + DIAG_SEED_OFFSET,
     )
     diag_sampler.set_epoch(0)
     positions: list[int] = []
@@ -322,10 +329,39 @@ def _snapshot_diagnostic_batch(
     return snap
 
 
+def _maybe_load_init_ckpt(
+    model: DiTVelocity, init_ckpt: Optional[str], device: str
+) -> Optional[dict[str, Any]]:
+    """Load model-only weights from ``init_ckpt`` if provided.
+
+    Returns the loaded metadata dict (``{step, epoch, config, extra}``)
+    when a checkpoint is loaded, or ``None`` when no init was requested.
+
+    Optimizer state is intentionally NOT loaded — the Stage 2 optimizer
+    must start fresh because the objective has changed.
+    """
+    if init_ckpt is None or str(init_ckpt).lower() in ("", "none", "null"):
+        warnings.warn(
+            "Stage 2 was launched without --init-ckpt / training.init_ckpt. "
+            "Training from scratch is supported but usually you want to warm-start "
+            "from a balanced Stage 1 final.pt.",
+            stacklevel=2,
+        )
+        return None
+    ckpt_path = Path(init_ckpt)
+    meta = load_checkpoint(ckpt_path, model=model, map_location=device)
+    print(
+        f"[init] loaded model weights from {ckpt_path} "
+        f"step={meta.get('step')} epoch={meta.get('epoch')}",
+        flush=True,
+    )
+    return meta
+
+
 def run_training(
-    cfg: Stage1Config, output_dir: Path
+    cfg: Stage2Config, output_dir: Path
 ) -> dict[str, Any]:
-    """Run the Stage 1 training loop and return a summary dict."""
+    """Run the Stage 2 training loop and return a summary dict."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -334,9 +370,22 @@ def run_training(
     split, filter_report = build_split(cfg)
     if filter_report is not None:
         print(f"[data] filtered split: {filter_report}", flush=True)
-    dataset = build_dataset(cfg, split)
+
+    pair_index = build_pair_index_from_split(split)
     print(
-        f"[data] dataset len(treated)={len(dataset)} "
+        f"[data] pair_index groups={len(pair_index.groups)} "
+        f"treated_paired={len(pair_index.treated_to_group)}",
+        flush=True,
+    )
+    if len(pair_index.groups) == 0:
+        raise RuntimeError(
+            "build_pair_index_from_split returned an empty PairIndex — "
+            "Stage 2 cannot run without same-plate control pools"
+        )
+
+    dataset = build_dataset(cfg, split, pair_index)
+    print(
+        f"[data] dataset stage={dataset.stage} len(treated)={len(dataset)} "
         f"smiles_vocab={len(dataset.split.smiles_vocab)}",
         flush=True,
     )
@@ -345,6 +394,9 @@ def run_training(
     model = build_model(cfg)
     device = _device_str(cfg)
     model = model.to(device)
+    init_meta = _maybe_load_init_ckpt(
+        model, cfg.training.get("init_ckpt"), device
+    )
     optimizer = build_optimizer(model, cfg)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"[model] params: {n_params:,} device={device}", flush=True)
@@ -418,7 +470,6 @@ def run_training(
                 **metrics,
             }
 
-            # Diagnostics on a fixed batch every diag_interval steps.
             if diag_interval > 0 and (step == 0 or (step + 1) % diag_interval == 0):
                 diag = diagnostic_suite(
                     model, diag_batch, device=device,
@@ -438,6 +489,7 @@ def run_training(
                         "v_target_rms": metrics["v_target_rms"],
                         "t_mean": metrics["t_mean"],
                         "cond_drop_frac": metrics["cond_drop_frac"],
+                        "source_noise_frac": metrics["source_noise_frac"],
                     },
                     prefix=f"[step {step}/{max_steps} epoch {epoch}]",
                 )
@@ -452,7 +504,10 @@ def run_training(
                     step=step + 1,
                     epoch=epoch,
                     config=cfg.to_serializable(),
-                    extra={"samples_seen": samples_seen},
+                    extra={
+                        "samples_seen": samples_seen,
+                        "init_ckpt": cfg.training.get("init_ckpt"),
+                    },
                 )
                 last_ckpt = latest
 
@@ -468,7 +523,10 @@ def run_training(
         step=step,
         epoch=epoch,
         config=cfg.to_serializable(),
-        extra={"samples_seen": samples_seen},
+        extra={
+            "samples_seen": samples_seen,
+            "init_ckpt": cfg.training.get("init_ckpt"),
+        },
     )
     elapsed = time.time() - started
     print(
@@ -501,6 +559,9 @@ def run_training(
         "final_ckpt": str(final),
         "batch_size": batch_size,
         "output_dir": str(output_dir),
+        "init_ckpt": cfg.training.get("init_ckpt"),
+        "init_ckpt_meta": init_meta,
+        "pair_index_groups": len(pair_index.groups),
     }
 
 
@@ -508,8 +569,10 @@ def run_training(
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="CellFluxV2 Stage 1 trainer (noise -> treated).")
-    p.add_argument("--config", required=True, help="Path to a Stage 1 YAML config.")
+    p = argparse.ArgumentParser(
+        description="CellFluxV2 Stage 2 trainer (same-plate control -> treated)."
+    )
+    p.add_argument("--config", required=True, help="Path to a Stage 2 YAML config.")
     p.add_argument("--max-steps", type=int, default=None)
     p.add_argument("--batch-size", type=int, default=None)
     p.add_argument("--num-workers", type=int, default=None)
@@ -518,7 +581,16 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "--output-dir",
         type=str,
         default=None,
-        help="Where train.jsonl + checkpoints go (default: runs/stage1).",
+        help="Where train.jsonl + checkpoints go (default: runs/stage2).",
+    )
+    p.add_argument(
+        "--init-ckpt",
+        type=str,
+        default=None,
+        help=(
+            "Path to a model-only init checkpoint (typically a balanced "
+            "Stage 1 final.pt). Optimizer state is NOT loaded."
+        ),
     )
     p.add_argument(
         "--no-wandb",
@@ -547,13 +619,14 @@ def main(argv: Optional[list[str]] = None) -> dict[str, Any]:
             "num_workers": args.num_workers,
             "device": args.device,
             "output_dir": args.output_dir,
+            "init_ckpt": args.init_ckpt,
             "wandb_disabled": args.no_wandb,
             "wandb_project": args.wandb_project,
             "wandb_run_name": args.wandb_run_name,
             "wandb_mode": args.wandb_mode,
         },
     )
-    output_dir = Path(cfg.training.get("output_dir") or "runs/stage1")
+    output_dir = Path(cfg.training.get("output_dir") or "runs/stage2")
     return run_training(cfg, output_dir)
 
 

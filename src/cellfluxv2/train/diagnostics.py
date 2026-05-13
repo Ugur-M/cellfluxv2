@@ -146,8 +146,12 @@ def embedding_rms(
 ) -> dict[str, float]:
     """RMS of the model's internal time and condition embeddings.
 
-    Returns ``{condition_embedding_rms, time_embedding_rms}``. Useful for
-    detecting degenerate conditioning (RMS ≈ 0) early in training.
+    If the model exposes ``get_conditioning_embeddings``, also report the
+    post-balancing ("used") and combined RMS so we can tell whether the
+    conditioning channel is starved before or after RMSNorm. The legacy
+    keys ``condition_embedding_rms`` / ``time_embedding_rms`` remain and
+    mirror the *used* values when the balanced path is available, falling
+    back to the raw values for models that do not expose the method.
     """
     if not isinstance(model, nn.Module):
         raise ValueError(f"model must be an nn.Module; got {type(model).__name__}")
@@ -161,12 +165,39 @@ def embedding_rms(
     B = int(cond.shape[0])
 
     model.eval()
-    cond_emb = model.cond_embed(cond)
     t = torch.rand(B, device=cond.device, dtype=cond.dtype)
+
+    if hasattr(model, "get_conditioning_embeddings"):
+        bundle = model.get_conditioning_embeddings(t, cond)
+        time_raw_rms = float(rms(bundle["time_raw"]).item())
+        cond_raw_rms = float(rms(bundle["condition_raw"]).item())
+        time_used_rms = float(rms(bundle["time_used"]).item())
+        cond_used_rms = float(rms(bundle["condition_used"]).item())
+        combined_rms = float(rms(bundle["combined"]).item())
+        return {
+            "time_embedding_raw_rms": time_raw_rms,
+            "condition_embedding_raw_rms": cond_raw_rms,
+            "time_embedding_used_rms": time_used_rms,
+            "condition_embedding_used_rms": cond_used_rms,
+            "combined_conditioning_rms": combined_rms,
+            # Backwards-compatible legacy keys mirror the post-balance RMS.
+            "time_embedding_rms": time_used_rms,
+            "condition_embedding_rms": cond_used_rms,
+        }
+
+    # Fallback for models that do not expose get_conditioning_embeddings.
+    cond_emb = model.cond_embed(cond)
     time_emb = model.time_embed(t)
+    raw_t_rms = float(rms(time_emb).item())
+    raw_c_rms = float(rms(cond_emb).item())
     return {
-        "condition_embedding_rms": float(rms(cond_emb).item()),
-        "time_embedding_rms": float(rms(time_emb).item()),
+        "time_embedding_raw_rms": raw_t_rms,
+        "condition_embedding_raw_rms": raw_c_rms,
+        "time_embedding_used_rms": raw_t_rms,
+        "condition_embedding_used_rms": raw_c_rms,
+        "combined_conditioning_rms": float(rms(time_emb + cond_emb).item()),
+        "time_embedding_rms": raw_t_rms,
+        "condition_embedding_rms": raw_c_rms,
     }
 
 

@@ -1,0 +1,37 @@
+{
+  "treated_rows_checked": 63405,
+  "control_rows_checked": 10234,
+  "stage1_samples_seen": 128,
+  "stage2_samples_seen": 128,
+  "unique_pairing_groups": 160,
+  "missing_npz_count": 0,
+  "missing_address_count": 195,
+  "missing_fingerprint_count": 0,
+  "nonfinite_latent_count": 195,
+  "nonfinite_batch_count": 0,
+  "treated_cells_per_well_min_median_max": {
+    "min": 1,
+    "median": 44.0,
+    "max": 126
+  },
+  "control_cells_per_well_min_median_max": {
+    "min": 1,
+    "median": 58.0,
+    "max": 92
+  },
+  "normalized_treated_mean": -0.012782852121639621,
+  "normalized_treated_std": 1.016633231359962,
+  "normalized_control_mean": 0.005639377211688708,
+  "normalized_control_std": 0.9834785869897018,
+  "dataloader_stage1_samples_per_sec": 0.0,
+  "dataloader_stage2_samples_per_sec": 0.0,
+  "status": "fail",
+  "failure_reasons": [
+    "missing_address_count=195",
+    "nonfinite_latent_count=195",
+    "stage1_samples_seen=128 != len(stage1)=63405",
+    "stage2_samples_seen=128 != len(stage2)=63405",
+    "stage1_crashed: KeyError: \"address 'F14' not in plate Plate44.npz\"",
+    "stage2_crashed: KeyError: \"address 'F14' not in plate Plate44.npz\""
+  ]
+}

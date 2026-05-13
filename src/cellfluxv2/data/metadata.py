@@ -60,8 +60,10 @@ def split_metadata(df: pd.DataFrame) -> MetadataSplit:
     """Pure split function over an already-loaded metadata DataFrame.
 
     The input ``df.index`` is captured as ``metadata_idx`` before any
-    filtering. The treated / control DataFrames returned are filtered
-    views (copies); neither resets nor drops ``metadata_idx``.
+    filtering. The treated / control DataFrames returned use
+    ``metadata_idx`` as their explicit ``.index`` (with ``drop=False``
+    so the column survives), so ``split.<...>.loc[m_idx]`` is correct
+    by construction rather than by RangeIndex coincidence.
     """
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
@@ -83,9 +85,24 @@ def split_metadata(df: pd.DataFrame) -> MetadataSplit:
 
     treated = df[is_treated].copy()
     control = df[is_control].copy()
+    treated = _set_metadata_idx_index(treated)
+    control = _set_metadata_idx_index(control)
     vocab = set(treated["SMILES"].astype(str).unique())
 
     return MetadataSplit(treated=treated, control=control, smiles_vocab=vocab)
+
+
+def _set_metadata_idx_index(df: pd.DataFrame) -> pd.DataFrame:
+    """Promote ``metadata_idx`` to be ``df.index`` while keeping the column.
+
+    ``drop=False`` keeps the column readable as ``df["metadata_idx"]``.
+    Clearing ``index.name`` avoids pandas ambiguity between the index
+    name and the same-named column (which would otherwise produce a
+    ``FutureWarning`` and confuse ``df.reset_index`` later).
+    """
+    out = df.set_index("metadata_idx", drop=False)
+    out.index.name = None
+    return out
 
 
 MISSING_CSV_REQUIRED_COLUMNS: tuple[str, ...] = (
@@ -141,6 +158,12 @@ def filter_split_by_missing_addresses(
     control_keep = ~split.control["metadata_idx"].astype(int).isin(control_drop_idx)
     filtered_treated = split.treated[treated_keep].copy()
     filtered_control = split.control[control_keep].copy()
+    # Defensive: boolean indexing preserves the index, so the survivors
+    # already have metadata_idx as their index. Re-apply set_index so any
+    # pandas edge case (e.g. an upstream caller that previously reset)
+    # cannot leave the result with a RangeIndex.
+    filtered_treated = _set_metadata_idx_index(filtered_treated)
+    filtered_control = _set_metadata_idx_index(filtered_control)
 
     vocab = (
         set(filtered_treated["SMILES"].astype(str).unique())

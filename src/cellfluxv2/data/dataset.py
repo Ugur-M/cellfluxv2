@@ -138,15 +138,27 @@ class CellFluxDataset(Dataset):
             x0 = torch.from_numpy(plate_obj.latent[control_row_idx])
             x0 = (x0 - self.mean) / self.std
 
-        assert tuple(x0.shape) == LATENT_SHAPE, f"x0 shape {tuple(x0.shape)}"
-        assert tuple(x1.shape) == LATENT_SHAPE, f"x1 shape {tuple(x1.shape)}"
-        assert tuple(condition.shape) == (CONDITION_DIM,), (
-            f"condition shape {tuple(condition.shape)}"
-        )
-        assert x0.dtype == torch.float32 and x1.dtype == torch.float32
-        assert torch.isfinite(x0).all(), "x0 has non-finite values"
-        assert torch.isfinite(x1).all(), "x1 has non-finite values"
-        assert torch.isfinite(condition).all(), "condition has non-finite values"
+        # Explicit ValueError checks (not assert) so `python -O` cannot
+        # silently strip the strict invariants. Each branch reports the
+        # offending tensor name and the actual shape/dtype.
+        if tuple(x0.shape) != LATENT_SHAPE:
+            raise ValueError(f"x0 shape {tuple(x0.shape)} != {LATENT_SHAPE}")
+        if tuple(x1.shape) != LATENT_SHAPE:
+            raise ValueError(f"x1 shape {tuple(x1.shape)} != {LATENT_SHAPE}")
+        if tuple(condition.shape) != (CONDITION_DIM,):
+            raise ValueError(
+                f"condition shape {tuple(condition.shape)} != ({CONDITION_DIM},)"
+            )
+        if x0.dtype != torch.float32:
+            raise ValueError(f"x0 dtype {x0.dtype} != torch.float32")
+        if x1.dtype != torch.float32:
+            raise ValueError(f"x1 dtype {x1.dtype} != torch.float32")
+        if not torch.isfinite(x0).all():
+            raise ValueError("x0 contains non-finite values")
+        if not torch.isfinite(x1).all():
+            raise ValueError("x1 contains non-finite values")
+        if not torch.isfinite(condition).all():
+            raise ValueError("condition contains non-finite values")
 
         return {
             "x0": x0,

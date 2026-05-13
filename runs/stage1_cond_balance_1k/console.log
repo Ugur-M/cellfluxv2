@@ -1,0 +1,102 @@
+[data] filtered split: {'raw_treated_rows': 63405, 'raw_control_rows': 35546, 'filtered_treated_rows': 63212, 'filtered_control_rows': 35544, 'dropped_treated_rows': 193, 'dropped_control_rows': 2, 'missing_csv_path': '/teamspace/studios/this_studio/cellfluxv2_repro/data/missing_addresses.csv'}
+[data] dataset len(treated)=63212 smiles_vocab=1674
+[model] params: 18,230,280 device=cuda
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from /teamspace/studios/this_studio/.netrc.
+wandb: Currently logged in as: immoustafa0 (immoustafa0-city-university-of-london) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: WARNING Using a boolean value for 'reinit' is deprecated. Use 'return_previous' or 'finish_previous' instead.
+wandb: setting up run xhl7cib2
+wandb: Tracking run with wandb version 0.26.1
+wandb: Run data is saved locally in /teamspace/studios/this_studio/cellfluxv2_repro/runs/stage1_cond_balance_1k/wandb/run-20260512_160945-xhl7cib2
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run valiant-resonance-6
+wandb: ⭐️ View project at https://wandb.ai/immoustafa0-city-university-of-london/cellfluxv2-stage1
+wandb: 🚀 View run at https://wandb.ai/immoustafa0-city-university-of-london/cellfluxv2-stage1/runs/xhl7cib2
+[wandb] run=valiant-resonance-6 url=https://wandb.ai/immoustafa0-city-university-of-london/cellfluxv2-stage1/runs/xhl7cib2
+wandb: WARNING Symlinked 1 file into the W&B run directory; call wandb.save again to sync new files.
+[step 0/1000 epoch 0] cond_drop_frac=0.0781 grad_norm=3.0650 loss=7.2600 t_mean=0.5263 v_pred_rms=0.4397 v_target_rms=2.6643
+[step 20/1000 epoch 0] cond_drop_frac=0.1016 grad_norm=1.0016 loss=6.7001 t_mean=0.4732 v_pred_rms=0.5109 v_target_rms=2.6480
+[step 40/1000 epoch 0] cond_drop_frac=0.1172 grad_norm=1.0291 loss=7.0591 t_mean=0.5303 v_pred_rms=0.5317 v_target_rms=2.7127
+[step 60/1000 epoch 0] cond_drop_frac=0.1406 grad_norm=2.0694 loss=6.5496 t_mean=0.5034 v_pred_rms=0.6622 v_target_rms=2.6004
+[step 80/1000 epoch 0] cond_drop_frac=0.0859 grad_norm=3.8481 loss=6.1534 t_mean=0.4562 v_pred_rms=0.9285 v_target_rms=2.6163
+[step 100/1000 epoch 0] cond_drop_frac=0.1094 grad_norm=3.5236 loss=6.0708 t_mean=0.5294 v_pred_rms=0.8635 v_target_rms=2.6441
+[step 120/1000 epoch 0] cond_drop_frac=0.0703 grad_norm=3.2114 loss=6.3772 t_mean=0.5043 v_pred_rms=1.0762 v_target_rms=2.7343
+[step 140/1000 epoch 0] cond_drop_frac=0.1328 grad_norm=3.4269 loss=5.9184 t_mean=0.4648 v_pred_rms=1.0665 v_target_rms=2.6626
+[step 160/1000 epoch 0] cond_drop_frac=0.0703 grad_norm=2.3457 loss=5.2521 t_mean=0.5687 v_pred_rms=1.2928 v_target_rms=2.6171
+[step 180/1000 epoch 0] cond_drop_frac=0.0547 grad_norm=3.4807 loss=5.3002 t_mean=0.4979 v_pred_rms=1.1183 v_target_rms=2.5653
+[step 200/1000 epoch 0] cond_drop_frac=0.1094 grad_norm=2.0583 loss=5.8052 t_mean=0.5297 v_pred_rms=1.1764 v_target_rms=2.6978
+[step 220/1000 epoch 0] cond_drop_frac=0.0781 grad_norm=1.4594 loss=5.9595 t_mean=0.5032 v_pred_rms=1.2474 v_target_rms=2.7191
+[step 240/1000 epoch 0] cond_drop_frac=0.0625 grad_norm=6.8858 loss=5.5505 t_mean=0.5473 v_pred_rms=1.2143 v_target_rms=2.6367
+[step 260/1000 epoch 0] cond_drop_frac=0.0859 grad_norm=5.8310 loss=5.7143 t_mean=0.4854 v_pred_rms=1.2160 v_target_rms=2.6523
+[step 280/1000 epoch 0] cond_drop_frac=0.0938 grad_norm=2.0911 loss=5.6655 t_mean=0.4896 v_pred_rms=1.1151 v_target_rms=2.6626
+[step 300/1000 epoch 0] cond_drop_frac=0.1328 grad_norm=1.3033 loss=5.5473 t_mean=0.4864 v_pred_rms=1.2374 v_target_rms=2.6594
+[step 320/1000 epoch 0] cond_drop_frac=0.1094 grad_norm=3.8479 loss=5.7001 t_mean=0.4942 v_pred_rms=1.2593 v_target_rms=2.7084
+[step 340/1000 epoch 0] cond_drop_frac=0.1016 grad_norm=2.9324 loss=5.2235 t_mean=0.5156 v_pred_rms=1.2277 v_target_rms=2.5796
+[step 360/1000 epoch 0] cond_drop_frac=0.0781 grad_norm=2.2670 loss=5.4847 t_mean=0.4812 v_pred_rms=1.1755 v_target_rms=2.6550
+[step 380/1000 epoch 0] cond_drop_frac=0.0703 grad_norm=2.5578 loss=5.3589 t_mean=0.5175 v_pred_rms=1.2780 v_target_rms=2.6289
+[step 400/1000 epoch 0] cond_drop_frac=0.1016 grad_norm=2.4612 loss=5.6966 t_mean=0.5163 v_pred_rms=1.2064 v_target_rms=2.6926
+[step 420/1000 epoch 0] cond_drop_frac=0.0938 grad_norm=4.0679 loss=5.1603 t_mean=0.5362 v_pred_rms=1.2501 v_target_rms=2.5781
+[step 440/1000 epoch 0] cond_drop_frac=0.0625 grad_norm=3.3192 loss=5.5532 t_mean=0.4609 v_pred_rms=1.2155 v_target_rms=2.6642
+[step 460/1000 epoch 0] cond_drop_frac=0.0859 grad_norm=3.8751 loss=5.4339 t_mean=0.4940 v_pred_rms=1.1729 v_target_rms=2.6191
+[step 480/1000 epoch 0] cond_drop_frac=0.1016 grad_norm=6.3628 loss=5.8889 t_mean=0.4522 v_pred_rms=1.2093 v_target_rms=2.7113
+[step 500/1000 epoch 1] cond_drop_frac=0.0859 grad_norm=3.0330 loss=5.1042 t_mean=0.4872 v_pred_rms=1.2357 v_target_rms=2.5867
+[step 520/1000 epoch 1] cond_drop_frac=0.1094 grad_norm=2.3280 loss=5.6260 t_mean=0.4641 v_pred_rms=1.2623 v_target_rms=2.6790
+[step 540/1000 epoch 1] cond_drop_frac=0.1250 grad_norm=2.5854 loss=5.4165 t_mean=0.4887 v_pred_rms=1.2031 v_target_rms=2.6312
+[step 560/1000 epoch 1] cond_drop_frac=0.0938 grad_norm=4.4360 loss=5.5987 t_mean=0.5271 v_pred_rms=1.2566 v_target_rms=2.6739
+[step 580/1000 epoch 1] cond_drop_frac=0.1250 grad_norm=3.2276 loss=5.4402 t_mean=0.4593 v_pred_rms=1.1678 v_target_rms=2.6201
+[step 600/1000 epoch 1] cond_drop_frac=0.0703 grad_norm=5.3012 loss=5.5610 t_mean=0.4774 v_pred_rms=1.2035 v_target_rms=2.6681
+[step 620/1000 epoch 1] cond_drop_frac=0.1328 grad_norm=3.3012 loss=5.3072 t_mean=0.5076 v_pred_rms=1.2122 v_target_rms=2.6170
+[step 640/1000 epoch 1] cond_drop_frac=0.1094 grad_norm=3.2406 loss=4.8410 t_mean=0.5437 v_pred_rms=1.2398 v_target_rms=2.5280
+[step 660/1000 epoch 1] cond_drop_frac=0.1328 grad_norm=4.3199 loss=5.3331 t_mean=0.4995 v_pred_rms=1.3658 v_target_rms=2.6503
+[step 680/1000 epoch 1] cond_drop_frac=0.0703 grad_norm=4.1446 loss=4.9212 t_mean=0.5080 v_pred_rms=1.2891 v_target_rms=2.5515
+[step 700/1000 epoch 1] cond_drop_frac=0.1016 grad_norm=1.0597 loss=5.3821 t_mean=0.4872 v_pred_rms=1.3007 v_target_rms=2.6557
+[step 720/1000 epoch 1] cond_drop_frac=0.1172 grad_norm=3.1016 loss=5.7246 t_mean=0.5306 v_pred_rms=1.3669 v_target_rms=2.7263
+[step 740/1000 epoch 1] cond_drop_frac=0.0781 grad_norm=3.7061 loss=5.4422 t_mean=0.4706 v_pred_rms=1.2098 v_target_rms=2.6264
+[step 760/1000 epoch 1] cond_drop_frac=0.1094 grad_norm=1.8467 loss=5.6079 t_mean=0.4841 v_pred_rms=1.2581 v_target_rms=2.6911
+[step 780/1000 epoch 1] cond_drop_frac=0.1016 grad_norm=1.8842 loss=5.1811 t_mean=0.5291 v_pred_rms=1.4459 v_target_rms=2.7026
+[step 800/1000 epoch 1] cond_drop_frac=0.0938 grad_norm=1.8083 loss=5.1024 t_mean=0.5240 v_pred_rms=1.2560 v_target_rms=2.5825
+[step 820/1000 epoch 1] cond_drop_frac=0.0781 grad_norm=1.4770 loss=5.4981 t_mean=0.5067 v_pred_rms=1.3035 v_target_rms=2.6994
+[step 840/1000 epoch 1] cond_drop_frac=0.0781 grad_norm=2.8962 loss=5.4371 t_mean=0.4998 v_pred_rms=1.3029 v_target_rms=2.6645
+[step 860/1000 epoch 1] cond_drop_frac=0.1484 grad_norm=2.0172 loss=5.8263 t_mean=0.4309 v_pred_rms=1.3019 v_target_rms=2.7443
+[step 880/1000 epoch 1] cond_drop_frac=0.1875 grad_norm=1.3501 loss=5.0986 t_mean=0.4898 v_pred_rms=1.3357 v_target_rms=2.5937
+[step 900/1000 epoch 1] cond_drop_frac=0.0859 grad_norm=5.0510 loss=5.0858 t_mean=0.4741 v_pred_rms=1.2486 v_target_rms=2.5850
+[step 920/1000 epoch 1] cond_drop_frac=0.1094 grad_norm=3.2321 loss=5.2296 t_mean=0.4682 v_pred_rms=1.2292 v_target_rms=2.6005
+[step 940/1000 epoch 1] cond_drop_frac=0.0938 grad_norm=2.0902 loss=5.5009 t_mean=0.4824 v_pred_rms=1.3531 v_target_rms=2.6987
+[step 960/1000 epoch 1] cond_drop_frac=0.0938 grad_norm=5.1877 loss=5.2686 t_mean=0.4991 v_pred_rms=1.3506 v_target_rms=2.6633
+[step 980/1000 epoch 1] cond_drop_frac=0.0938 grad_norm=4.2259 loss=5.9447 t_mean=0.4858 v_pred_rms=1.3604 v_target_rms=2.7714
+[step 999/1000 epoch 2] cond_drop_frac=0.0781 grad_norm=4.3933 loss=5.1817 t_mean=0.4852 v_pred_rms=1.2760 v_target_rms=2.6436
+[done] step=1000 epoch=3 elapsed=75.9s first_loss=7.2600 last_loss=5.1817
+wandb: WARNING Symlinked 1 file into the W&B run directory; call wandb.save again to sync new files.
+wandb: updating run metadata
+wandb: uploading runs/stage1_cond_balance_1k/final.pt
+wandb: uploading history steps 989-1000, summary, console lines 52-54
+wandb: 
+wandb: Run history:
+wandb:                           cond_drop_frac ▆▅▃▇▃▄▃▆▇▇▆▄▄▅▃▁▄▃▅▅▁▃▇▅▃▆▄▄▄▂▅▆▄▃▄▅▄▄█▇
+wandb:    diagnostics/combined_conditioning_rms █▂▂▁▁▄
+wandb:  diagnostics/condition_embedding_raw_rms ▁▄▆▇▇█
+wandb:      diagnostics/condition_embedding_rms ▁▇████
+wandb: diagnostics/condition_embedding_used_rms ▁▇████
+wandb:              diagnostics/drug_swap_v_cos ▁▅████
+wandb:  diagnostics/mse_gap_shuffled_minus_real █▁▂▅▂▂
+wandb:           diagnostics/mse_real_condition █▂▄▂▃▁
+wandb:       diagnostics/mse_shuffled_condition █▂▄▂▃▁
+wandb:       diagnostics/time_embedding_raw_rms ▁▃▅▆▇█
+wandb:                                      +17 ...
+wandb: 
+wandb: Run summary:
+wandb:                           cond_drop_frac 0.07812
+wandb:    diagnostics/combined_conditioning_rms 0.94743
+wandb:  diagnostics/condition_embedding_raw_rms 0.25182
+wandb:      diagnostics/condition_embedding_rms 1.0
+wandb: diagnostics/condition_embedding_used_rms 1.0
+wandb:              diagnostics/drug_swap_v_cos 0.99926
+wandb:  diagnostics/mse_gap_shuffled_minus_real 0.00087
+wandb:           diagnostics/mse_real_condition 4.98155
+wandb:       diagnostics/mse_shuffled_condition 4.98242
+wandb:       diagnostics/time_embedding_raw_rms 0.28745
+wandb:                                      +17 ...
+wandb: 
+wandb: 🚀 View run valiant-resonance-6 at: https://wandb.ai/immoustafa0-city-university-of-london/cellfluxv2-stage1/runs/xhl7cib2
+wandb: ⭐️ View project at: https://wandb.ai/immoustafa0-city-university-of-london/cellfluxv2-stage1
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 2 other file(s)
+wandb: Find logs at: ./runs/stage1_cond_balance_1k/wandb/run-20260512_160945-xhl7cib2/logs

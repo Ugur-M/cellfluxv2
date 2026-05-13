@@ -148,17 +148,53 @@ def test_mse_real_vs_shuffled_raises_when_batch_size_one():
 # embedding_rms
 # ============================================================================
 
+EXPECTED_EMBED_KEYS = {
+    "time_embedding_raw_rms",
+    "condition_embedding_raw_rms",
+    "time_embedding_used_rms",
+    "condition_embedding_used_rms",
+    "combined_conditioning_rms",
+    # Backwards-compatible legacy keys.
+    "time_embedding_rms",
+    "condition_embedding_rms",
+}
+
+
 def test_embedding_rms_returns_positive_finite():
     model = _tiny_model()
     out = embedding_rms(model, _make_batch(B=4), device="cpu")
-    assert set(out.keys()) == {
-        "condition_embedding_rms",
-        "time_embedding_rms",
-    }
+    assert set(out.keys()) == EXPECTED_EMBED_KEYS
     for k, v in out.items():
         assert isinstance(v, float)
         assert torch.isfinite(torch.tensor(v)), f"{k}={v}"
         assert v >= 0.0
+
+
+def test_embedding_rms_legacy_keys_mirror_used():
+    """``time_embedding_rms`` / ``condition_embedding_rms`` should equal the
+    post-balance ``*_used_rms`` so old wandb/jsonl pipelines keep working."""
+    model = _tiny_model()
+    out = embedding_rms(model, _make_batch(B=4), device="cpu")
+    assert out["time_embedding_rms"] == out["time_embedding_used_rms"]
+    assert out["condition_embedding_rms"] == out["condition_embedding_used_rms"]
+
+
+def test_embedding_rms_used_approx_unit_when_balanced():
+    """Tiny DiT defaults to ``balance_conditioning=True`` → used RMS ≈ 1."""
+    model = _tiny_model()
+    out = embedding_rms(model, _make_batch(B=8), device="cpu")
+    assert out["time_embedding_used_rms"] == pytest.approx(1.0, abs=1e-3)
+    assert out["condition_embedding_used_rms"] == pytest.approx(1.0, abs=1e-3)
+
+
+def test_embedding_rms_used_equals_raw_when_unbalanced():
+    """With balance off, ``*_used_rms`` should equal ``*_raw_rms``."""
+    model = DiTVelocity(
+        hidden_dim=64, depth=2, num_heads=4, balance_conditioning=False
+    )
+    out = embedding_rms(model, _make_batch(B=4), device="cpu")
+    assert out["time_embedding_used_rms"] == out["time_embedding_raw_rms"]
+    assert out["condition_embedding_used_rms"] == out["condition_embedding_raw_rms"]
 
 
 def test_embedding_rms_raises_without_cond_embed():
@@ -196,6 +232,12 @@ EXPECTED_SUITE_KEYS = {
     "mse_real_condition",
     "mse_shuffled_condition",
     "mse_gap_shuffled_minus_real",
+    "time_embedding_raw_rms",
+    "condition_embedding_raw_rms",
+    "time_embedding_used_rms",
+    "condition_embedding_used_rms",
+    "combined_conditioning_rms",
+    # Backwards-compatible legacy keys.
     "condition_embedding_rms",
     "time_embedding_rms",
 }

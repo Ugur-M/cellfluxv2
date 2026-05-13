@@ -66,6 +66,7 @@ keeps the suite green before the next one lands.
 pytest                                  # full unit-test suite
 python scripts/smoke_synthetic_overfit.py  # CPU overfit gate (no GCS)
 python scripts/smoke_stage1_tiny.py         # 5-step Stage 1 on real data
+python scripts/smoke_stage2_tiny.py         # 5-step Stage 2 on real data
 ```
 
 ### Stage 1 GPU smoke (RTX PRO 6000)
@@ -99,3 +100,36 @@ the CLI:
 --wandb-run-name NAME
 --wandb-mode {online,offline,disabled}
 ```
+
+### Stage 2 GPU smoke (RTX PRO 6000)
+
+Stage 2 is the first regime where drug conditioning has a strong
+learning signal: it samples a **same-plate** control latent for every
+treated row, so the only systematic difference between source and
+target is the drug. Stage 2 must use the balanced ``DiTVelocity``
+architecture and should warm-start from a Stage 1 ``final.pt`` that
+was trained under the same architecture (do **not** warm-start from
+pre-cond-balance Stage 1 checkpoints).
+
+```
+python -m cellfluxv2.train.stage2 \
+  --config configs/stage2.yaml \
+  --device cuda \
+  --batch-size 128 \
+  --num-workers 4 \
+  --max-steps 2000 \
+  --init-ckpt runs/stage1_cond_balance_1k/final.pt \
+  --output-dir runs/stage2_gpu_smoke_from_balanced_stage1
+```
+
+``--init-ckpt`` loads model weights only; the AdamW optimizer always
+starts fresh because the Stage 2 objective differs from Stage 1.
+
+The Stage 2 trainer builds a **strict same-(experiment, plate) PairIndex
+on the missing-address-filtered split** — there is no Stage 1-style
+empty-PairIndex shortcut. If filtering ever leaves a treated plate
+with zero controls, ``build_pair_index`` raises loudly.
+
+W&B is wired through ``configs/stage2.yaml`` (project
+``cellfluxv2-stage2`` by default). The same CLI flags as Stage 1
+apply.
