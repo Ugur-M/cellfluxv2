@@ -98,7 +98,8 @@ def _verify_same_plate_invariant(cfg: Stage2Config) -> None:
         raise AssertionError("pair_index has zero groups after filtering")
     ds = build_dataset(cfg, split, pair_index)
     ds.set_epoch(0)
-    loader = build_dataloader(ds, cfg)
+    loader, sampler = build_dataloader(ds, cfg)
+    sampler.set_epoch(0)
     batch = next(iter(loader))
     meta = batch["meta"]
     B = len(meta["experiment_name"])
@@ -178,9 +179,9 @@ def main() -> None:
         depth=int(cfg.model["depth"]),
         num_heads=int(cfg.model["num_heads"]),
         dropout=float(cfg.model.get("dropout", 0.0)),
-        balance_conditioning=bool(cfg.model.get("balance_conditioning", True)),
-        time_scale=float(cfg.model.get("time_scale", 1.0)),
-        condition_scale=float(cfg.model.get("condition_scale", 1.0)),
+        balance_conditioning=cfg.model.get("balance_conditioning", True),
+        time_scale=cfg.model.get("time_scale", 1.0),
+        condition_scale=cfg.model.get("condition_scale", 1.0),
     )
     meta = load_checkpoint(final, model=fresh)
     assert meta["step"] == int(cfg.training["max_steps"]), (

@@ -10,6 +10,12 @@ A worker called for a plate-coherent batch fetches its NPZ once and serves
 all 512 cells from memory. Same trade-off as the 2DGen pipeline: each
 gradient step sees cells from a single plate, which is fine here because
 controls (when used in Stage 2) are already same-plate by construction.
+
+Reproducibility contract: ``set_epoch(epoch)`` is the only writer for the
+sampler's epoch counter. ``__iter__`` is a pure generator that seeds its
+RNG from ``self._seed + self._epoch`` and never mutates internal state.
+The trainer is responsible for calling ``set_epoch(epoch)`` whenever it
+calls ``dataset.set_epoch(epoch)``; the two stay in lockstep.
 """
 
 from __future__ import annotations
@@ -35,7 +41,19 @@ class PlateGroupedSampler(Sampler[int]):
         self._length = sum(len(v) for v in self._plate_to_positions.values())
 
     def set_epoch(self, epoch: int) -> None:
+        if isinstance(epoch, bool) or not isinstance(epoch, int):
+            raise ValueError(f"epoch must be an int; got {type(epoch).__name__}")
+        if epoch < 0:
+            raise ValueError(f"epoch must be >= 0; got {epoch}")
         self._epoch = int(epoch)
+
+    @property
+    def epoch(self) -> int:
+        return self._epoch
+
+    @property
+    def seed(self) -> int:
+        return self._seed
 
     def __iter__(self) -> Iterator[int]:
         rng = np.random.default_rng(self._seed + self._epoch)
@@ -46,7 +64,6 @@ class PlateGroupedSampler(Sampler[int]):
             rng.shuffle(positions)
             for p in positions:
                 yield int(p)
-        self._epoch += 1
 
     def __len__(self) -> int:
         return self._length

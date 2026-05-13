@@ -16,8 +16,10 @@ CLI overrides:
 Behaviour:
 
 * Loads the YAML config; CLI flags override the corresponding fields.
-* Loads metadata; applies :func:`filter_split_by_missing_addresses` when
-  the CSV exists (the dataset itself stays strict).
+* Loads metadata; applies :func:`filter_split_by_missing_addresses`
+  when ``data.missing_addresses_path`` is set. The path must exist when
+  set; missing-but-set raises ``FileNotFoundError``. The dataset itself
+  stays strict.
 * Builds a real :func:`build_pair_index` on the **filtered** split — no
   empty-PairIndex shortcut. If any treated ``(experiment_name, plate)``
   group lost all its controls, ``build_pair_index`` raises loudly; that
@@ -163,9 +165,14 @@ def build_split(cfg: Stage2Config) -> tuple[MetadataSplit, Optional[dict[str, An
     missing_path = cfg.data.get("missing_addresses_path")
     if not missing_path:
         return split, None
+    # Strict: if the user names a missing-addresses CSV, the file must
+    # exist. Silently skipping would hide a config typo and run the
+    # trainer on unfiltered data.
     missing_path = Path(missing_path)
     if not missing_path.exists():
-        return split, None
+        raise FileNotFoundError(
+            f"missing_addresses_path is set but file not found: {missing_path}"
+        )
     filtered_split, report = filter_split_by_missing_addresses(split, missing_path)
     return filtered_split, report
 
@@ -204,14 +211,18 @@ def build_dataset(
 
 def build_model(cfg: Stage2Config) -> DiTVelocity:
     m = cfg.model
+    # `balance_conditioning`, `time_scale`, `condition_scale` are passed
+    # through raw so DiTVelocity's strict validation runs on the actual
+    # YAML values. Coercing here (bool(...), float(...)) would silently
+    # turn typos like "false" into True or True into 1.0.
     return DiTVelocity(
         hidden_dim=int(m["hidden_dim"]),
         depth=int(m["depth"]),
         num_heads=int(m["num_heads"]),
         dropout=float(m.get("dropout", 0.0)),
-        balance_conditioning=bool(m.get("balance_conditioning", True)),
-        time_scale=float(m.get("time_scale", 1.0)),
-        condition_scale=float(m.get("condition_scale", 1.0)),
+        balance_conditioning=m.get("balance_conditioning", True),
+        time_scale=m.get("time_scale", 1.0),
+        condition_scale=m.get("condition_scale", 1.0),
     )
 
 
@@ -223,22 +234,37 @@ def build_optimizer(model: DiTVelocity, cfg: Stage2Config) -> torch.optim.Optimi
     )
 
 
-def build_dataloader(
-    dataset: CellFluxDataset, cfg: Stage2Config
-) -> DataLoader:
-    num_workers = int(cfg.training["num_workers"])
-    device = str(cfg.training.get("device", "cpu"))
-    treated = dataset.split.treated
+# Diagnostic-vs-training seed split. The diagnostic snapshot uses
+# ``rng_seed + DIAG_SEED_OFFSET`` so its plate/position draw is
+# reproducible but does not share state with the training sampler.
+DIAG_SEED_OFFSET = 1_000_001
+
+
+def _plate_to_positions(treated) -> dict:
+    """Build ``{(experiment_name, plate): [positions]}`` from a treated split.
+
+    ``positions`` are dataset indices into ``dataset.split.treated`` (i.e.
+    the ``.iloc`` positions, not ``metadata_idx``).
+    """
     plate_keys = list(
         zip(treated["experiment_name"].tolist(), treated["plate"].tolist())
     )
-    plate_to_positions: dict = {}
+    out: dict = {}
     for pos, key in enumerate(plate_keys):
-        plate_to_positions.setdefault(key, []).append(pos)
+        out.setdefault(key, []).append(pos)
+    return out
+
+
+def build_dataloader(
+    dataset: CellFluxDataset, cfg: Stage2Config
+) -> tuple[DataLoader, PlateGroupedSampler]:
+    num_workers = int(cfg.training["num_workers"])
+    device = str(cfg.training.get("device", "cpu"))
+    plate_to_positions = _plate_to_positions(dataset.split.treated)
     sampler = PlateGroupedSampler(
         plate_to_positions, seed=int(cfg.data.get("rng_seed", 1337))
     )
-    return DataLoader(
+    loader = DataLoader(
         dataset,
         batch_size=int(cfg.training["batch_size"]),
         sampler=sampler,
@@ -249,6 +275,7 @@ def build_dataloader(
         persistent_workers=num_workers > 0,
         prefetch_factor=4 if num_workers > 0 else None,
     )
+    return loader, sampler
 
 
 # ---------- training loop --------------------------------------------------
@@ -263,9 +290,35 @@ def _device_str(cfg: Stage2Config) -> str:
     return requested
 
 
-def _snapshot_diagnostic_batch(loader: DataLoader, device: str) -> dict[str, Any]:
-    """Pull one batch and clone tensors to CPU so subsequent loader epochs don't reuse them."""
-    batch = next(iter(loader))
+def _snapshot_diagnostic_batch(
+    dataset: CellFluxDataset, cfg: Stage2Config, batch_size: int
+) -> dict[str, Any]:
+    """Build a deterministic diagnostic batch with a separate sampler seed.
+
+    Uses a fresh ``PlateGroupedSampler`` seeded at
+    ``rng_seed + DIAG_SEED_OFFSET`` and reads ``dataset[i]`` directly
+    (no DataLoader, no workers). The diagnostic batch is therefore a
+    deterministic function of ``(rng_seed, dataset state)`` and does
+    not share its draw with the training loader's sampler.
+    """
+    plate_to_positions = _plate_to_positions(dataset.split.treated)
+    diag_sampler = PlateGroupedSampler(
+        plate_to_positions,
+        seed=int(cfg.data.get("rng_seed", 1337)) + DIAG_SEED_OFFSET,
+    )
+    diag_sampler.set_epoch(0)
+    positions: list[int] = []
+    for p in diag_sampler:
+        positions.append(p)
+        if len(positions) >= batch_size:
+            break
+    if len(positions) < batch_size:
+        raise ValueError(
+            f"diagnostic batch needs {batch_size} positions but dataset only "
+            f"yielded {len(positions)}"
+        )
+    items = [dataset[i] for i in positions]
+    batch = CellFluxDataset.collate(items)
     snap = {
         "x0": batch["x0"].detach().clone(),
         "x1": batch["x1"].detach().clone(),
@@ -337,7 +390,7 @@ def run_training(
         flush=True,
     )
 
-    loader = build_dataloader(dataset, cfg)
+    loader, sampler = build_dataloader(dataset, cfg)
     model = build_model(cfg)
     device = _device_str(cfg)
     model = model.to(device)
@@ -348,10 +401,13 @@ def run_training(
     n_params = sum(p.numel() for p in model.parameters())
     print(f"[model] params: {n_params:,} device={device}", flush=True)
 
-    # Fixed held-out diagnostic batch — pulled once before any epoch
-    # boundary, so it is not the same tensors any worker hands back.
+    # Diagnostic batch uses a separate sampler seed (rng_seed +
+    # DIAG_SEED_OFFSET) so it does not share its draw with the training
+    # loader. Determinism is from the seed + dataset state only.
     dataset.set_epoch(0)
-    diag_batch = _snapshot_diagnostic_batch(loader, device)
+    diag_batch = _snapshot_diagnostic_batch(
+        dataset, cfg, batch_size=int(cfg.training["batch_size"])
+    )
 
     train_jsonl = output_dir / "train.jsonl"
     if train_jsonl.exists():
@@ -387,6 +443,7 @@ def run_training(
 
     while step < max_steps:
         dataset.set_epoch(epoch)
+        sampler.set_epoch(epoch)
         for batch in loader:
             if step >= max_steps:
                 break
