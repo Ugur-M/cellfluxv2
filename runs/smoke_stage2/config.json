@@ -1,0 +1,53 @@
+{
+  "data": {
+    "fingerprints_path": "/teamspace/studios/this_studio/cellfluxv2_repro/data/fingerprints_morgan_r2_b1024.npz",
+    "latent_root": "/teamspace/gcs_connections/sentinal4d/imaging/2d/single_cell/rxrx/rxrx3-core/features/rxrx3_core_mae_latents",
+    "metadata_path": "/teamspace/studios/this_studio/2DGen/data/rxrx3_core/metadata_rxrx3_core_normalized.csv",
+    "missing_addresses_path": "/teamspace/studios/this_studio/cellfluxv2_repro/data/missing_addresses.csv",
+    "norm_stats_path": "/teamspace/studios/this_studio/2DGen/data/rxrx3_core/norm_stats_controls.pt",
+    "plate_cache_max_plates": 8,
+    "rng_seed": 1337
+  },
+  "model": {
+    "balance_conditioning": true,
+    "condition_scale": 1.0,
+    "depth": 2,
+    "dropout": 0.0,
+    "hidden_dim": 128,
+    "num_heads": 4,
+    "time_scale": 1.0
+  },
+  "seed": 0,
+  "stage": 2,
+  "training": {
+    "batch_size": 8,
+    "checkpoint_interval": 2,
+    "cond_dropout_p": 0.1,
+    "device": "cuda",
+    "diagnostic_interval": 2,
+    "grad_clip_norm": 1.0,
+    "init_ckpt": null,
+    "log_interval": 1,
+    "lr": 0.0001,
+    "max_steps": 5,
+    "num_workers": 0,
+    "path_sigma": 1.0,
+    "path_type": "noisy",
+    "source_noise_p": 0.1,
+    "source_noise_sigma": 1.0,
+    "weight_decay": 0.01
+  },
+  "wandb": {
+    "enabled": false,
+    "entity": null,
+    "mode": "online",
+    "notes": null,
+    "project": "cellfluxv2-stage2",
+    "run_name": null,
+    "tags": [
+      "stage2",
+      "noisy_path",
+      "balanced_cond"
+    ]
+  }
+}
