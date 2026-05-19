@@ -1,4 +1,4 @@
-# cellfluxv2_repro
+# cellfluxv2_repo
 
 A clean **CellFluxV2-style reproduction baseline** trained on **RxRx3 MAE
 latents of shape `(169, 8)`**.
